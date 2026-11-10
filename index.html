@@ -33,7 +33,7 @@
 <table><thead><tr><th>Linie</th><th>Ziel</th><th>Steig</th><th style="text-align:right">Abfahrt</th></tr></thead>
 <tbody id="liste"></tbody></table>
 <div id="fehler" class="fehler" hidden></div>
-<footer><span>● Echtzeit &nbsp; grau = Fahrplan</span><span id="stand"></span></footer>
+<footer><span><a href="start.html" style="color:var(--acc);text-decoration:none;font-weight:600">← Alle Abfahrten</a> &nbsp; ● Echtzeit &nbsp; grau = Fahrplan</span><span id="stand"></span></footer>
 <script>
 const p = new URLSearchParams(location.search);
 const stop = p.get("stop") || "66402";

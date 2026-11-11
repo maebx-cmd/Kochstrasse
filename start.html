@@ -11,7 +11,7 @@
 <title>Abfahrten</title>
 <style>
   :root { --bg:#0e1a24; --card:#152635; --card-hi:#1c3246; --fg:#f2f5f7; --dim:#8fa3b3;
-          --ivb:#e30613; --oebb:#d2001e; --vvt:#00965e; --acc:#f5b800; }
+          --ivb:#e30613; --oebb:#d2001e; --vvt:#00965e; --db:#ec0016; --acc:#f5b800; }
   * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
   body { background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
          padding:calc(env(safe-area-inset-top) + 18px) calc(env(safe-area-inset-right) + 16px)
@@ -36,7 +36,7 @@
          background:var(--c); color:#fff; }
   a.btn.gross { grid-column:1 / -1; min-height:110px; }
   a.btn.gross .name { font-size:24px; }
-  .ivb { --c:var(--ivb); } .oebb { --c:var(--oebb); } .vvt { --c:var(--vvt); }
+  .ivb { --c:var(--ivb); } .oebb { --c:var(--oebb); } .vvt { --c:var(--vvt); } .db { --c:var(--db); }
 </style>
 </head>
 <body>
@@ -75,6 +75,22 @@
   <a class="btn oebb" href="https://meine.oebb.at/abfahrtankunft/departure?evaNr=8100063&amp;static=true&amp;page=1&amp;offset=0&amp;ignoreIncident=false&amp;contentType=departure">
     <span class="name">Landeck-Zams</span>
     <span class="meta">Abfahrt <span class="tag">ÖBB</span></span>
+  </a>
+  <a class="btn oebb" href="https://meine.oebb.at/webdisplay/?stationId=Rop&amp;contentType=departure&amp;staticLayout=true">
+    <span class="name">Roppen</span>
+    <span class="meta">Abfahrt <span class="tag">ÖBB</span></span>
+  </a>
+</div>
+
+<h2 class="db">DB · München</h2>
+<div class="grid">
+  <a class="btn db" href="https://iris.noncd.db.de/wbt/js/index.html?bhf=MH">
+    <span class="name">München Hbf</span>
+    <span class="meta">Abfahrt <span class="tag">DB</span></span>
+  </a>
+  <a class="btn db" href="https://iris.noncd.db.de/wbt/js/index.html?bhf=MHT">
+    <span class="name">München Hbf tief</span>
+    <span class="meta">S-Bahn <span class="tag">DB</span></span>
   </a>
 </div>
 

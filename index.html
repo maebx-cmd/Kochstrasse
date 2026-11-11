@@ -39,6 +39,7 @@ const p = new URLSearchParams(location.search);
 const stop = p.get("stop") || "66402";
 const steig = (p.get("steig") || "B").toUpperCase();  // Standard: nur Steig B; "ALLE" = alle Steige
 const n = parseInt(p.get("n") || "12", 10);
+const linien = (p.get("linie") || "").toUpperCase().split(",").map(x => x.trim()).filter(Boolean);
 
 // Linienfarben – bei Bedarf an die IVB-Farben anpassen
 const FARBEN = { "1":"#d9262e","2":"#00843d","3":"#f39200","5":"#7a4a9e","6":"#00a3e0","STB":"#6b6b6b",
@@ -60,10 +61,11 @@ async function laden() {
     const d = { name: NAMEN[stop] || ("Haltestelle " + stop),
       abfahrten: raw.map(x => { const s = x.smartinfo || x; return { linie: s.route || "", ziel: s.direction || "",
         via: s.via || "", zeit: s.time || "", echtzeit: s.stat === "PREDICTED", steig: s.plabel || "" }; }) };
-    document.getElementById("titel").textContent = d.name;
+    document.getElementById("titel").textContent = d.name + (linien.length ? " · " + linien.join(", ") : "");
     document.title = "Abfahrten " + d.name;
     let rows = d.abfahrten;
     if (steig && steig !== "ALLE") rows = rows.filter(a => a.steig.toUpperCase() === steig);
+    if (linien.length) rows = rows.filter(a => linien.includes(a.linie.toUpperCase()));
     rows = rows.slice(0, n);
     document.getElementById("liste").innerHTML = rows.map(a => {
       const bg = FARBEN[a.linie.toUpperCase()] || (a.linie.startsWith("N") ? "#1c2f6b" : "#3a5266");

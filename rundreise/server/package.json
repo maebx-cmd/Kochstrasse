@@ -1,0 +1,10 @@
+{
+  "name": "oebb-rest-rundreise",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "express": "^4.22.3",
+    "hafas-client": "^6.3.6",
+    "hafas-rest-api": "^5.1.3"
+  }
+}

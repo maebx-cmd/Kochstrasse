@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rundreise</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rundreise">
+<meta name="theme-color" content="#0e1a24">
+<link rel="apple-touch-icon" href="../icon.png">
+<style>
+  :root { --bg:#0e1a24; --card:#152635; --card-hi:#1c3246; --line:#24405a; --fg:#f2f5f7; --dim:#8fa3b3;
+          --ivb:#e30613; --oebb:#d2001e; --vvt:#00965e; --acc:#f5b800; --cold:#6cc4ff; --warn:#ff8a5c; }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  body { background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+         padding:max(16px, env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom)); max-width:720px; margin:0 auto; }
+  header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:12px;
+           border-bottom:3px solid var(--acc); margin-bottom:16px; }
+  h1 { font-size:28px; font-weight:800; letter-spacing:-.01em; }
+  header a { color:var(--dim); text-decoration:none; font-size:15px; font-weight:600; }
+  h2 { font-size:13px; font-weight:600; color:var(--dim); text-transform:uppercase; letter-spacing:.08em; margin:18px 0 8px; }
+  .card { background:var(--card); border-radius:14px; padding:14px; margin-bottom:10px; }
+  label { display:block; font-size:13px; color:var(--dim); margin-bottom:5px; font-weight:600; }
+  input, select { width:100%; font:inherit; font-size:17px; color:var(--fg); background:var(--bg); border:1px solid var(--line);
+         border-radius:10px; padding:11px 12px; -webkit-appearance:none; appearance:none; }
+  input:focus, select:focus { outline:2px solid var(--acc); outline-offset:-1px; }
+  input[type=datetime-local] { min-height:46px; }
+  [hidden] { display:none !important; }
+  .row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
+  .row > .field { min-width:0; }
+  @media (max-width:480px) { .row.dt { grid-template-columns:1fr; } }
+  input[type=datetime-local] { font-size:15px; padding:11px 8px; }
+  .field { margin-bottom:12px; position:relative; }
+  .field:last-child { margin-bottom:0; }
+  .swap { position:absolute; right:6px; top:28px; background:var(--card-hi); border:0; color:var(--fg); font-size:18px;
+          width:38px; height:36px; border-radius:8px; }
+  .sugg { position:absolute; left:0; right:0; top:100%; z-index:20; background:var(--card-hi); border:1px solid var(--line);
+          border-radius:10px; margin-top:4px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+  .sugg div { padding:11px 12px; border-bottom:1px solid var(--line); font-size:16px; }
+  .sugg div:last-child { border-bottom:0; }
+  .sugg div:active, .sugg div.sel { background:var(--line); }
+  .quick { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .chip { border:1px solid var(--line); background:var(--bg); color:var(--fg); font:inherit; font-size:14px; font-weight:600;
+          padding:8px 12px; border-radius:999px; }
+  .chip.on { background:var(--acc); color:#111; border-color:var(--acc); }
+  .seg { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .seg button { border:1px solid var(--line); background:var(--bg); color:var(--fg); font:inherit; font-size:14px; font-weight:700;
+          padding:11px 6px; border-radius:10px; line-height:1.15; }
+  .seg button small { display:block; font-weight:500; font-size:11px; color:var(--dim); margin-top:2px; }
+  .seg button.on { background:var(--vvt); border-color:var(--vvt); }
+  .seg button.on small { color:#dff5ea; }
+  .toggle { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .toggle b { font-size:16px; }
+  .toggle span { display:block; font-size:13px; color:var(--dim); font-weight:400; margin-top:2px; }
+  .sw { position:relative; width:52px; height:32px; flex:none; }
+  .sw input { opacity:0; width:0; height:0; position:absolute; }
+  .sw i { position:absolute; inset:0; background:var(--line); border-radius:999px; transition:.2s; }
+  .sw i::after { content:""; position:absolute; width:26px; height:26px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s; }
+  .sw input:checked + i { background:var(--cold); }
+  .sw input:checked + i::after { transform:translateX(20px); }
+  .cold-opts { margin-top:12px; }
+  details.adv summary { color:var(--dim); font-size:14px; font-weight:600; padding:6px 2px; cursor:pointer; }
+  details.adv[open] summary { margin-bottom:8px; }
+  .hint { font-size:12px; color:var(--dim); margin-top:5px; line-height:1.35; }
+  .go { width:100%; border:0; border-radius:14px; padding:16px; font:inherit; font-size:19px; font-weight:800;
+        background:var(--acc); color:#111; margin-top:6px; }
+  .go.stop { background:var(--oebb); color:#fff; }
+  .go:active { transform:scale(.98); }
+  #status { margin-top:12px; font-size:14px; color:var(--dim); min-height:20px; }
+  .bar { height:4px; background:var(--card); border-radius:4px; overflow:hidden; margin-top:6px; }
+  .bar i { display:block; height:100%; width:0; background:var(--acc); transition:width .3s; }
+  .err { background:#3a1b1b; border-left:4px solid var(--oebb); padding:12px; border-radius:10px; font-size:14px; margin-top:10px; line-height:1.4; }
+  .reshead { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:18px 0 8px; }
+  .reshead h2 { margin:0; }
+  .reshead select { width:auto; font-size:14px; padding:7px 10px; }
+  .res { background:var(--card); border-radius:14px; margin-bottom:10px; border-left:5px solid var(--vvt); overflow:hidden; }
+  .res > summary { list-style:none; padding:13px 14px; cursor:pointer; }
+  .res > summary::-webkit-details-marker { display:none; }
+  .res[open] > summary { background:var(--card-hi); }
+  .rtime { display:flex; justify-content:space-between; align-items:baseline; }
+  .rtime b { font-size:22px; font-variant-numeric:tabular-nums; }
+  .rtime span { font-size:13px; color:var(--dim); font-variant-numeric:tabular-nums; }
+  .rvia { margin-top:5px; font-size:15px; line-height:1.35; }
+  .rvia em { font-style:normal; color:var(--dim); }
+  .rmeta { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+  .pill { font-size:12px; font-weight:700; padding:3px 8px; border-radius:6px; background:var(--bg); color:var(--dim); }
+  .pill.cold { color:var(--cold); }
+  .pill.good { color:#7be0ad; }
+  .legs { padding:4px 14px 14px; }
+  .leg { display:grid; grid-template-columns:50px 1fr; gap:2px 10px; padding:8px 0; }
+  .leg .t { font-variant-numeric:tabular-nums; font-weight:700; font-size:15px; }
+  .leg .s { font-size:15px; }
+  .leg .s small { color:var(--dim); }
+  .leg .ride { grid-column:2; display:flex; align-items:center; gap:8px; font-size:13px; color:var(--dim); padding:5px 0 5px 10px;
+               border-left:3px solid var(--c, var(--dim)); margin-left:2px; }
+  .badge { font-size:12px; font-weight:800; padding:3px 7px; border-radius:5px; background:var(--c, #555); color:#fff; white-space:nowrap; }
+  .p-fern { --c:var(--oebb); } .p-reg { --c:#3d6f99; } .p-s { --c:#5b4d9e; } .p-bus { --c:#c78a00; } .p-tram { --c:var(--ivb); }
+  .wait { margin:2px 0 2px 60px; font-size:13px; padding:6px 10px; border-radius:8px; background:var(--bg); color:var(--dim); }
+  .wait.cold { color:var(--cold); }
+  .wait.warm { color:#7be0ad; }
+  .empty { color:var(--dim); font-size:15px; padding:14px; text-align:center; }
+  footer { margin-top:24px; font-size:12px; color:var(--dim); line-height:1.5; }
+  footer a { color:var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Rundreise</h1>
+  <a href="../start.html">← Start</a>
+</header>
+
+<div class="card">
+  <div class="field">
+    <label for="from">Von</label>
+    <input id="from" autocomplete="off" placeholder="Bahnhof / Haltestelle">
+    <div class="sugg" id="from-s" hidden></div>
+  </div>
+  <div class="field">
+    <label for="to">Nach (Ziel)</label>
+    <input id="to" autocomplete="off" placeholder="Bahnhof / Haltestelle" style="padding-right:52px">
+    <button class="swap" id="swap" title="Tauschen" aria-label="Start und Ziel tauschen">⇅</button>
+    <div class="sugg" id="to-s" hidden></div>
+  </div>
+  <div class="row dt">
+    <div class="field">
+      <label for="start">Los ab</label>
+      <input id="start" type="datetime-local">
+    </div>
+    <div class="field">
+      <label for="deadline">Späteste Ankunft</label>
+      <input id="deadline" type="datetime-local">
+    </div>
+  </div>
+  <div class="quick" id="quick">
+    <button class="chip" data-h="2">+2 h</button>
+    <button class="chip" data-h="3">+3 h</button>
+    <button class="chip" data-h="4">+4 h</button>
+    <button class="chip" data-h="6">+6 h</button>
+    <button class="chip" data-h="8">+8 h</button>
+    <button class="chip" id="nowbtn">Jetzt</button>
+  </div>
+</div>
+
+<h2>Gültigkeit</h2>
+<div class="seg" id="region">
+  <button data-v="vvt">VVT<small>nur Tirol</small></button>
+  <button data-v="at">Klimaticket Ö<small>ganz Österreich</small></button>
+  <button data-v="all">Ohne Grenze<small>auch Ausland</small></button>
+</div>
+
+<h2>Verkehrsmittel</h2>
+<div class="hint" style="margin:-4px 0 8px">Fernverkehr = RJ/RJX, ICE, EC/IC, D, EN/NJ</div>
+<div class="quick" id="prods">
+  <button class="chip" id="onlyfern">🚄 Nur Fernzüge</button>
+  <button class="chip" data-p="fern">Fernverkehr</button>
+  <button class="chip" data-p="reg">Regionalzug / S-Bahn</button>
+  <button class="chip" data-p="bus">Bus</button>
+  <button class="chip" data-p="tram">Tram (IVB)</button>
+</div>
+
+<h2>Warten</h2>
+<div class="card">
+  <div class="toggle">
+    <div><b>Kälte-Modus</b><span>Umsteigezeit begrenzen, damit du nicht am kalten Bahnsteig stehst</span></div>
+    <label class="sw"><input type="checkbox" id="cold"><i></i></label>
+  </div>
+  <div class="cold-opts" id="coldopts">
+    <div class="row">
+      <div class="field">
+        <label for="maxwait">Max. Wartezeit (min)</label>
+        <input id="maxwait" type="number" min="3" max="120" inputmode="numeric">
+      </div>
+      <div class="field">
+        <label for="warmwait">mit Warteraum (min)</label>
+        <input id="warmwait" type="number" min="3" max="180" inputmode="numeric">
+      </div>
+    </div>
+    <div class="field">
+      <label for="warm">Bahnhöfe mit Warteraum</label>
+      <input id="warm" placeholder="Innsbruck Hbf, Wörgl Hbf, …">
+      <div class="hint">Kommagetrennt. Dort ist die längere Wartezeit erlaubt – überall sonst nur die kurze.</div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div class="field">
+      <label for="mintr">Mind. Umsteigezeit (min)</label>
+      <input id="mintr" type="number" min="0" max="30" inputmode="numeric">
+    </div>
+    <div class="field">
+      <label for="maxwaitwarm">Max. Wartezeit ohne Kälte-Modus</label>
+      <input id="maxwaitwarm" type="number" min="5" max="180" inputmode="numeric">
+    </div>
+  </div>
+</div>
+
+<details class="adv card">
+  <summary>Erweitert</summary>
+  <div class="row">
+    <div class="field">
+      <label for="depth">Suchtiefe (Ebenen)</label>
+      <select id="depth"><option value="0">automatisch</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
+    </div>
+    <div class="field">
+      <label for="beam">Suchbreite</label>
+      <select id="beam"><option value="5">schmal (5)</option><option value="8">normal (8)</option><option value="12">breit (12)</option><option value="18">sehr breit (18)</option></select>
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label for="startwin">Erste Abfahrt innerhalb (min)</label>
+      <input id="startwin" type="number" min="5" max="240" inputmode="numeric">
+    </div>
+    <div class="field">
+      <label for="maxcalls">Max. Abfragen</label>
+      <input id="maxcalls" type="number" min="30" max="2000" inputmode="numeric">
+    </div>
+  </div>
+  <div class="field">
+    <label for="extra">Zusätzlich erlaubte Halte (VVT-Modus)</label>
+    <input id="extra" placeholder="z. B. Oberaudorf">
+  </div>
+  <div class="field">
+    <label for="apibase">Fahrplan-API (hafas-rest-api, ÖBB-Profil)</label>
+    <input id="apibase" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <div class="hint">Standard: öffentliche Community-Instanz. Eigene Instanz (z. B. Raspberry Pi) siehe README.</div>
+  </div>
+  <div class="field">
+    <label for="rpm">Abfragen pro Minute</label>
+    <input id="rpm" type="number" min="10" max="600" inputmode="numeric">
+  </div>
+  <button class="chip" id="reset" style="margin-top:4px">Einstellungen zurücksetzen</button>
+</details>
+
+<button class="go" id="go">Rundreisen suchen</button>
+<div id="status"></div>
+<div class="bar" id="bar" hidden><i></i></div>
+<div id="errors"></div>
+
+<div class="reshead" id="reshead" hidden>
+  <h2 id="rescount">Ergebnisse</h2>
+  <select id="sort">
+    <option value="ride">Am meisten Fahrt</option>
+    <option value="wait">Am wenigsten Warten</option>
+    <option value="late">Ankunft knapp vor Limit</option>
+    <option value="few">Wenig Umstiege</option>
+    <option value="km">Weiteste Strecke</option>
+  </select>
+</div>
+<div id="results"></div>
+
+<footer>
+  Fahrplandaten: ÖBB (HAFAS) über eine hafas-rest-api-Instanz – enthält Bahn, Postbus, Regiobusse und IVB.
+  Angaben ohne Gewähr; Gültigkeitsgebiet wird über Lage der Umsteigehalte geschätzt.
+  Vor Abfahrt in ÖBB Scotty bzw. am Abfahrtsmonitor prüfen.
+</footer>
+
+<script src="engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const DEFAULTS = {
+    from: { id: '8100108', name: 'Innsbruck Hbf' },
+    to: { id: '', name: 'Imst-Pitztal' },
+    region: 'vvt',
+    prods: { fern: true, reg: true, bus: false, tram: false },
+    cold: true, maxwait: 15, warmwait: 45, mintr: 4, maxwaitwarm: 60,
+    warm: 'Innsbruck Hbf, Wörgl Hbf, Kufstein, Jenbach, Landeck-Zams',
+    depth: 0, beam: 8, startwin: 45, maxcalls: 300, extra: 'Oberaudorf',
+    apibase: 'https://v6.oebb.transport.rest/api', rpm: 90, sort: 'ride', hours: 6
+  };
+  const store = {
+    get() { try { return JSON.parse(localStorage.getItem('rundreise.v1') || 'null'); } catch (e) { return null; } },
+    set(v) { try { localStorage.setItem('rundreise.v1', JSON.stringify(v)); } catch (e) {} }
+  };
+  let S = Object.assign({}, DEFAULTS, store.get() || {});
+  S.prods = Object.assign({}, DEFAULTS.prods, S.prods || {});
+
+  // ---------- Zeit ----------
+  const pad = n => String(n).padStart(2, '0');
+  const toLocalInput = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const fromLocalInput = v => { const t = new Date(v).getTime(); return isNaN(t) ? null : t; };
+  const hm = t => { const d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+  const dur = m => (m >= 60 ? Math.floor(m / 60) + ' h ' + pad(m % 60) : m + ' min').replace(/ 00$/, '');
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function setTimes(hours) {
+    const now = new Date(); now.setSeconds(0, 0);
+    $('start').value = toLocalInput(now);
+    $('deadline').value = toLocalInput(new Date(now.getTime() + hours * 3600000));
+  }
+
+  // ---------- Formular laden ----------
+  function load() {
+    $('from').value = S.from.name; $('from').dataset.id = S.from.id || '';
+    $('to').value = S.to.name; $('to').dataset.id = S.to.id || '';
+    setTimes(S.hours || 6);
+    for (const k of ['maxwait', 'warmwait', 'mintr', 'maxwaitwarm', 'warm', 'depth', 'beam', 'startwin', 'maxcalls', 'extra', 'apibase', 'rpm', 'sort'])
+      $(k).value = S[k];
+    $('cold').checked = !!S.cold;
+    paintSeg(); paintProds(); paintCold();
+  }
+  function paintSeg() { document.querySelectorAll('#region button').forEach(b => b.classList.toggle('on', b.dataset.v === S.region)); }
+  function paintProds() {
+    document.querySelectorAll('#prods .chip[data-p]').forEach(b => b.classList.toggle('on', !!S.prods[b.dataset.p]));
+    const p = S.prods;
+    $('onlyfern').classList.toggle('on', !!(p.fern && !p.reg && !p.bus && !p.tram));
+  }
+  function paintCold() { $('coldopts').style.display = $('cold').checked ? '' : 'none'; }
+  function save() {
+    const num = (k, d) => { const v = parseInt($(k).value, 10); return isNaN(v) ? d : v; };
+    S.from = { id: $('from').dataset.id || '', name: $('from').value.trim() };
+    S.to = { id: $('to').dataset.id || '', name: $('to').value.trim() };
+    S.cold = $('cold').checked;
+    S.maxwait = num('maxwait', 15); S.warmwait = num('warmwait', 45); S.mintr = num('mintr', 4); S.maxwaitwarm = num('maxwaitwarm', 60);
+    S.warm = $('warm').value; S.depth = num('depth', 0); S.beam = num('beam', 8); S.startwin = num('startwin', 45);
+    S.maxcalls = num('maxcalls', 300); S.extra = $('extra').value; S.apibase = $('apibase').value.trim() || DEFAULTS.apibase;
+    S.rpm = num('rpm', 90); S.sort = $('sort').value;
+    store.set(S);
+  }
+
+  document.querySelectorAll('#region button').forEach(b => b.onclick = () => { S.region = b.dataset.v; paintSeg(); save(); });
+  $('onlyfern').onclick = () => {
+    const p = S.prods, isOnly = p.fern && !p.reg && !p.bus && !p.tram;
+    S.prods = isOnly ? Object.assign({}, DEFAULTS.prods) : { fern: true, reg: false, bus: false, tram: false };
+    paintProds(); save();
+  };
+  document.querySelectorAll('#prods .chip[data-p]').forEach(b => b.onclick = () => { S.prods[b.dataset.p] = !S.prods[b.dataset.p]; paintProds(); save(); });
+  document.querySelectorAll('#quick .chip[data-h]').forEach(b => b.onclick = () => {
+    const st = fromLocalInput($('start').value) || Date.now();
+    S.hours = +b.dataset.h;
+    $('deadline').value = toLocalInput(new Date(st + S.hours * 3600000)); save();
+  });
+  $('nowbtn').onclick = () => setTimes(S.hours || 6);
+  $('cold').onchange = () => { paintCold(); save(); };
+  $('swap').onclick = () => {
+    const a = { v: $('from').value, id: $('from').dataset.id }, b = { v: $('to').value, id: $('to').dataset.id };
+    $('from').value = b.v; $('from').dataset.id = b.id || ''; $('to').value = a.v; $('to').dataset.id = a.id || ''; save();
+  };
+  $('reset').onclick = () => { S = JSON.parse(JSON.stringify(DEFAULTS)); store.set(S); load(); };
+  document.querySelectorAll('input, select').forEach(el => el.addEventListener('change', save));
+  $('sort').onchange = () => { save(); render(); };
+
+  // ---------- API ----------
+  let api = null;
+  function getApi() {
+    const base = S.apibase || DEFAULTS.apibase;
+    if (!api || api.base !== base.replace(/\/+$/, '')) api = new Rundreise.Api(base, { rpm: S.rpm, conc: 4 });
+    api.rpm = S.rpm;
+    return api;
+  }
+
+  // ---------- Haltestellensuche ----------
+  function autocomplete(inp, box) {
+    let timer = null, items = [], seq = 0;
+    inp.addEventListener('input', () => {
+      inp.dataset.id = '';
+      clearTimeout(timer);
+      const q = inp.value.trim();
+      if (q.length < 2) { box.hidden = true; return; }
+      timer = setTimeout(async () => {
+        const my = ++seq;
+        try {
+          const r = await getApi().locations(q);
+          if (my !== seq) return;
+          items = (r || []).filter(x => x.type === 'stop' || x.type === 'station');
+          box.innerHTML = items.map((x, i) => '<div data-i="' + i + '">' + esc(x.name) + '</div>').join('') || '<div>Keine Treffer</div>';
+          box.hidden = false;
+        } catch (e) {
+          if (my !== seq) return;
+          box.innerHTML = '<div>Suche nicht möglich: ' + esc(e.message) + '</div>'; box.hidden = false;
+        }
+      }, 300);
+    });
+    box.addEventListener('mousedown', ev => ev.preventDefault());
+    box.addEventListener('click', ev => {
+      const el = ev.target.closest('[data-i]'); if (!el) return;
+      const x = items[+el.dataset.i];
+      inp.value = x.name; inp.dataset.id = x.id; box.hidden = true; save();
+    });
+    inp.addEventListener('blur', () => setTimeout(() => { box.hidden = true; }, 150));
+  }
+  autocomplete($('from'), $('from-s'));
+  autocomplete($('to'), $('to-s'));
+
+  async function resolve(inp) {
+    if (inp.dataset.id) return { id: inp.dataset.id, name: inp.value.trim() };
+    const q = inp.value.trim();
+    if (!q) throw new Error('Bitte Start und Ziel angeben.');
+    const r = await getApi().locations(q);
+    const x = (r || []).find(y => y.type === 'stop' || y.type === 'station');
+    if (!x) throw new Error('Haltestelle „' + q + '“ nicht gefunden.');
+    inp.value = x.name; inp.dataset.id = x.id; save();
+    return x;
+  }
+
+  // ---------- Suche ----------
+  let running = null, found = [], lastOpts = null;
+  function productsFromChips() {
+    const p = S.prods;
+    return {
+      nationalExpress: !!p.fern, national: !!p.fern, interregional: !!p.fern,
+      regional: !!p.reg, suburban: !!p.reg, bus: !!p.bus, tram: !!p.tram, subway: !!p.tram,
+      ferry: false, onCall: false
+    };
+  }
+  function setStatus(t, frac) {
+    $('status').textContent = t;
+    $('bar').hidden = frac == null;
+    if (frac != null) $('bar').firstElementChild.style.width = Math.round(Math.min(1, frac) * 100) + '%';
+  }
+  function showError(msg) { $('errors').innerHTML += '<div class="err">' + msg + '</div>'; }
+
+  $('go').onclick = async () => {
+    if (running) { running.abort(); return; }
+    save();
+    $('errors').innerHTML = '';
+    const start = fromLocalInput($('start').value), deadline = fromLocalInput($('deadline').value);
+    if (!start || !deadline || deadline <= start + 20 * 60000) { showError('Die späteste Ankunft muss mindestens 20 Minuten nach dem Start liegen.'); return; }
+    if (!Object.values(S.prods).some(Boolean)) { showError('Bitte mindestens ein Verkehrsmittel wählen.'); return; }
+    const a = getApi();
+    running = new AbortController();
+    a.signal = running.signal;
+    a.calls = 0;
+    $('go').textContent = 'Abbrechen'; $('go').classList.add('stop');
+    found = []; render();
+    setStatus('Haltestellen werden gesucht …', 0.02);
+    try {
+      const from = await resolve($('from')), to = await resolve($('to'));
+      const onlyFern = S.prods.fern && !S.prods.reg && !S.prods.bus && !S.prods.tram;
+      const opts = lastOpts = {
+        from, to, start, deadline, region: S.region,
+        extraAllowed: S.extra.split(',').map(s => s.trim()).filter(Boolean),
+        products: productsFromChips(),
+        coldMode: S.cold, maxWait: S.maxwait, warmMaxWait: S.warmwait, maxWaitWarm: S.maxwaitwarm,
+        warmStations: S.warm.split(',').map(s => s.trim()).filter(Boolean),
+        minTransfer: S.mintr, depth: S.depth, beam: S.beam, startWindow: onlyFern ? Math.max(S.startwin, 120) : S.startwin, maxCalls: S.maxcalls,
+        depsPerState: 8,
+        onProgress: p => {
+          if (p.done) return;
+          setStatus(p.phase + ' · ' + p.calls + ' Abfragen · ' + p.results + ' Rundreisen', 0.05 + 0.95 * Math.min(1, p.calls / S.maxcalls));
+        },
+        onResult: r => { found.push(r); scheduleRender(); },
+        onWarn: () => {}
+      };
+      const out = await Rundreise.search(a, opts);
+      found = out.results;
+      render();
+      setStatus((found.length ? found.length + ' Rundreisen gefunden' : 'Keine Rundreise gefunden') + ' · ' + out.calls + ' Abfragen' + (out.stopped ? ' · ' + out.stopped : ''), null);
+      if (!found.length) showError('Nichts gefunden. Tipps: mehr Zeit einplanen, Kälte-Wartezeit erhöhen, Bus dazunehmen oder Suchbreite/-tiefe erhöhen.' + (onlyFern ? '<br>Fernzüge fahren meist nur stündlich bis zweistündlich – im Kälte-Modus die Wartezeit mit Warteraum auf 60–120 min erhöhen.' : ''));
+    } catch (e) {
+      if (e.message === 'abgebrochen') setStatus('Abgebrochen · ' + found.length + ' Rundreisen bisher', null);
+      else {
+        setStatus('', null);
+        showError('Fehler: ' + esc(e.message) + '<br><small>Die Fahrplan-API ist evtl. nicht erreichbar. Unter „Erweitert“ kann eine andere Instanz eingetragen werden.</small>');
+      }
+      render();
+    } finally {
+      running = null; a.signal = null;
+      $('go').textContent = 'Rundreisen suchen'; $('go').classList.remove('stop');
+    }
+  };
+
+  // ---------- Ergebnisse ----------
+  let rt = null;
+  function scheduleRender() { if (!rt) rt = setTimeout(() => { rt = null; render(); }, 400); }
+  function pcls(p) {
+    if (['nationalExpress', 'national', 'interregional'].includes(p)) return 'p-fern';
+    if (p === 'suburban') return 'p-s';
+    if (p === 'bus') return 'p-bus';
+    if (p === 'tram' || p === 'subway') return 'p-tram';
+    return 'p-reg';
+  }
+  function sorted() {
+    const r = found.slice();
+    const k = $('sort').value;
+    const by = {
+      ride: (a, b) => b.rideMin - a.rideMin || a.waitMin - b.waitMin,
+      wait: (a, b) => a.waitMin - b.waitMin || b.rideMin - a.rideMin,
+      late: (a, b) => b.arr - a.arr || a.waitMin - b.waitMin,
+      few: (a, b) => a.transfers - b.transfers || b.rideMin - a.rideMin,
+      km: (a, b) => b.km - a.km || a.waitMin - b.waitMin
+    }[k];
+    return r.sort(by).slice(0, 40);
+  }
+  function render() {
+    const box = $('results');
+    $('reshead').hidden = !found.length;
+    $('rescount').textContent = found.length + ' Rundreise' + (found.length === 1 ? '' : 'n');
+    if (!found.length) { box.innerHTML = ''; return; }
+    const openKeys = new Set([...box.querySelectorAll('details[open]')].map(d => d.dataset.k));
+    box.innerHTML = sorted().map(r => card(r, openKeys.has(r.key))).join('');
+  }
+  function card(r, open) {
+    const total = Math.round((r.arr - r.dep) / 60000);
+    const pills = [
+      '<span class="pill good">🚆 ' + dur(r.rideMin) + ' Fahrt</span>',
+      '<span class="pill">⏱ ' + dur(r.waitMin) + ' Warten</span>',
+      '<span class="pill' + (r.coldWaits ? ' cold' : '') + '">max. ' + r.maxWaitMin + ' min</span>',
+      '<span class="pill">' + r.transfers + ' Umstieg' + (r.transfers === 1 ? '' : 'e') + '</span>',
+      '<span class="pill">ca. ' + r.km + ' km</span>'
+    ];
+    if (lastOpts) {
+      const spare = Math.round((lastOpts.deadline - r.arr) / 60000);
+      pills.push('<span class="pill">' + (spare > 0 ? spare + ' min Puffer' : 'pünktlich') + '</span>');
+    }
+    const via = r.legs.map((L, i) => i === 0 ? esc(L.from.name) : '').join('') +
+      r.legs.map(L => ' <em>→</em> ' + esc(L.to.name)).join('');
+    let legs = '';
+    r.legs.forEach((L, i) => {
+      if (i > 0) {
+        const w = r.waits[i - 1];
+        const cls = w.warm ? 'warm' : (w.min > 10 ? 'cold' : '');
+        legs += '<div class="wait ' + cls + '">' + (w.warm ? '🏠 ' : (w.min > 10 ? '❄️ ' : '')) + w.min + ' min Umstieg in ' + esc(r.legs[i - 1].to.name) + (w.warm ? ' (Warteraum)' : '') + '</div>';
+      }
+      const lineName = esc(L.line.name);
+      const stops = L.stops != null ? (L.stops === 0 ? ' · ohne Zwischenhalt' : ' · ' + L.stops + ' Zwischenhalt' + (L.stops === 1 ? '' : 'e')) : '';
+      legs += '<div class="leg">' +
+        '<div class="t">' + hm(L.dep) + '</div><div class="s">' + esc(L.from.name) + (L.depPlatform ? ' <small>Bstg ' + esc(L.depPlatform) + '</small>' : '') + '</div>' +
+        '<div class="ride ' + pcls(L.line.product) + '"><span class="badge">' + lineName + '</span><span>→ ' + esc(L.direction) + ' · ' + dur(Math.round((L.arr - L.dep) / 60000)) + stops + '</span></div>' +
+        '<div class="t">' + hm(L.arr) + '</div><div class="s">' + esc(L.to.name) + (L.arrPlatform ? ' <small>Bstg ' + esc(L.arrPlatform) + '</small>' : '') + '</div>' +
+        '</div>';
+    });
+    return '<details class="res" data-k="' + esc(r.key) + '"' + (open ? ' open' : '') + '><summary>' +
+      '<div class="rtime"><b>' + hm(r.dep) + ' → ' + hm(r.arr) + '</b><span>' + dur(total) + '</span></div>' +
+      '<div class="rvia">' + via + '</div>' +
+      '<div class="rmeta">' + pills.join('') + '</div>' +
+      '</summary><div class="legs">' + legs + '</div></details>';
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>

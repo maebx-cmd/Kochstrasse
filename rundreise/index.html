@@ -261,7 +261,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const DEFAULTS = {
-    from: { id: '8100108', name: 'Innsbruck Hbf' },
+    from: { id: '', name: 'Innsbruck Hbf' },
     to: { id: '', name: 'Imst-Pitztal' },
     region: 'vvt',
     prods: { fern: true, reg: true, bus: false, tram: false },
@@ -276,6 +276,7 @@
   };
   let S = Object.assign({}, DEFAULTS, store.get() || {});
   S.prods = Object.assign({}, DEFAULTS.prods, S.prods || {});
+  if (S.from && S.from.id === '8100108') S.from.id = ''; // alte UIC-Nummer, ÖBB nutzt eigene IDs
   if (!S.apibase || /transport\.rest/.test(S.apibase)) S.apibase = DEFAULTS.apibase; // alte, defekte Instanz ersetzen
 
   // ---------- Zeit ----------
@@ -391,7 +392,8 @@
     const q = inp.value.trim();
     if (!q) throw new Error('Bitte Start und Ziel angeben.');
     const r = await getApi().locations(q);
-    const x = (r || []).find(y => y.type === 'stop' || y.type === 'station');
+    const cands = (r || []).filter(y => y.type === 'stop' || y.type === 'station');
+    const x = cands.find(y => !y.isMeta && y.products && (y.products.regional || y.products.nationalExpress)) || cands[0];
     if (!x) throw new Error('Haltestelle „' + q + '“ nicht gefunden.');
     inp.value = x.name; inp.dataset.id = x.id; save();
     return x;

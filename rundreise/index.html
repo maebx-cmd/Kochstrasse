@@ -358,7 +358,7 @@
   function autocomplete(inp, box) {
     let timer = null, items = [], seq = 0;
     inp.addEventListener('input', () => {
-      inp.dataset.id = '';
+      inp.dataset.id = ''; inp.dataset.loc = '';
       clearTimeout(timer);
       const q = inp.value.trim();
       if (q.length < 2) { box.hidden = true; return; }
@@ -380,7 +380,7 @@
     box.addEventListener('click', ev => {
       const el = ev.target.closest('[data-i]'); if (!el) return;
       const x = items[+el.dataset.i];
-      inp.value = x.name; inp.dataset.id = x.id; box.hidden = true; save();
+      inp.value = x.name; inp.dataset.id = x.id; inp.dataset.loc = x.location ? JSON.stringify(x.location) : ''; box.hidden = true; save();
     });
     inp.addEventListener('blur', () => setTimeout(() => { box.hidden = true; }, 150));
   }
@@ -388,19 +388,23 @@
   autocomplete($('to'), $('to-s'));
 
   async function resolve(inp) {
-    if (inp.dataset.id) return { id: inp.dataset.id, name: inp.value.trim() };
+    if (inp.dataset.id && inp.dataset.loc) {
+      try { return { type: 'stop', id: inp.dataset.id, name: inp.value.trim(), location: JSON.parse(inp.dataset.loc) }; } catch (e) {}
+    }
     const q = inp.value.trim();
     if (!q) throw new Error('Bitte Start und Ziel angeben.');
     const r = await getApi().locations(q);
     const cands = (r || []).filter(y => y.type === 'stop' || y.type === 'station');
+    const exact = cands.find(y => y.name.toLowerCase() === q.toLowerCase());
+    if (exact) { inp.value = exact.name; inp.dataset.id = exact.id; inp.dataset.loc = exact.location ? JSON.stringify(exact.location) : ''; save(); return exact; }
     const x = cands.find(y => !y.isMeta && y.products && (y.products.regional || y.products.nationalExpress)) || cands[0];
     if (!x) throw new Error('Haltestelle „' + q + '“ nicht gefunden.');
-    inp.value = x.name; inp.dataset.id = x.id; save();
+    inp.value = x.name; inp.dataset.id = x.id; inp.dataset.loc = x.location ? JSON.stringify(x.location) : ''; save();
     return x;
   }
 
   // ---------- Suche ----------
-  let running = null, found = [], lastOpts = null;
+  let running = null, found = [], lastOpts = null, warns = [];
   function productsFromChips() {
     const p = S.prods;
     return {
@@ -429,7 +433,7 @@
     a.signal = running.signal;
     a.calls = 0;
     $('go').textContent = 'Abbrechen'; $('go').classList.add('stop');
-    found = []; render();
+    found = []; warns = []; render();
     setStatus('Haltestellen werden gesucht …', 0.02);
     try {
       const from = await resolve($('from')), to = await resolve($('to'));
@@ -447,12 +451,13 @@
           setStatus(p.phase + ' · ' + p.calls + ' Abfragen · ' + p.results + ' Rundreisen', 0.05 + 0.95 * Math.min(1, p.calls / S.maxcalls));
         },
         onResult: r => { found.push(r); scheduleRender(); },
-        onWarn: () => {}
+        onWarn: w => { if (warns.length < 50) warns.push(w); }
       };
       const out = await Rundreise.search(a, opts);
       found = out.results;
       render();
       setStatus((found.length ? found.length + ' Rundreisen gefunden' : 'Keine Rundreise gefunden') + ' · ' + out.calls + ' Abfragen' + (out.stopped ? ' · ' + out.stopped : ''), null);
+      if (!found.length && warns.length) showError('Diagnose (bitte als Screenshot schicken):<br><small>' + warns.slice(0, 8).map(esc).join('<br>') + '</small>');
       if (!found.length) showError('Nichts gefunden. Tipps: mehr Zeit einplanen, Kälte-Wartezeit erhöhen, Bus dazunehmen oder Suchbreite/-tiefe erhöhen.' + (onlyFern ? '<br>Fernzüge fahren meist nur stündlich bis zweistündlich – im Kälte-Modus die Wartezeit mit Warteraum auf 60–120 min erhöhen.' : ''));
     } catch (e) {
       if (e.message === 'abgebrochen') setStatus('Abgebrochen · ' + found.length + ' Rundreisen bisher', null);

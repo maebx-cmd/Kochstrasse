@@ -59,8 +59,11 @@
     const ia = stopId(a), ib = stopId(b);
     if (ia && ia === ib) return true;
     if (a.station && b.station && a.station.id && a.station.id === b.station.id) return true;
-    const d = km(a, b);
-    return d > 0 && d < 0.3;
+    if (loc(a) && loc(b)) return km(a, b) < 0.4;
+    // ohne Koordinaten: über den Namen ("Imst-Pitztal" = "Imst-Pitztal Bahnhof")
+    const na = norm(a.name || (a.station && a.station.name)), nb = norm(b.name || (b.station && b.station.name));
+    if (!na || !nb) return false;
+    return na === nb || na.startsWith(nb + ' ') || nb.startsWith(na + ' ');
   }
 
   function regionCheck(mode, extraNames) {
@@ -237,6 +240,7 @@
     const ctx = { isWarm };
 
     const results = new Map();
+    const stat = { deps: 0, trips: 0, region: 0, late: 0 };
     const hubLines = new Map(); // stopId -> Set(Linien)
     const fernStops = new Set();
     let stopped = null;
@@ -297,6 +301,7 @@
       // Fernverkehr bevorzugen, dann früheste
       cand.sort((a, b) => (FERN.has(b.L.product) - FERN.has(a.L.product)) || a.t - b.t);
       const take = cand.slice(0, o.depsPerState || 8);
+      stat.deps += deps.length;
 
       await Promise.all(take.map(async ({ d, t, L }) => {
         if (!budgetLeft() && !api.cache.has('trip:' + d.tripId)) { stopped = stopped || 'Abfrage-Limit erreicht'; return; }
@@ -304,10 +309,13 @@
         try { trip = await api.trip(d.tripId); }
         catch (e) { if (e.message === 'abgebrochen') throw e; return; }
         const sos = trip.stopovers || [];
+        stat.trips++;
         noteTrip(trip);
-        let bi = sos.findIndex(so => sameStop(so.stop, st.stop) && Math.abs(depTime(so) - t) < 5 * 60000);
-        if (bi < 0) bi = sos.findIndex(so => sameStop(so.stop, st.stop));
-        if (bi < 0) return;
+        const near = so => Math.abs(depTime(so) - t) < 3 * 60000;
+        let bi = sos.findIndex(so => (sameStop(so.stop, d.stop) || sameStop(so.stop, st.stop)) && near(so));
+        if (bi < 0) bi = sos.findIndex(so => sameStop(so.stop, d.stop) || sameStop(so.stop, st.stop));
+        if (bi < 0) { const hits = sos.filter(so => Math.abs(depTime(so) - t) < 60000); if (hits.length === 1) bi = sos.indexOf(hits[0]); }
+        if (bi < 0) { o.onWarn && o.onWarn('Einstieg nicht gefunden: ' + L.name + ' in ' + st.stop.name); return; }
         const boardStop = slimStop(sos[bi].stop);
         const boardPlat = plat(sos[bi].departurePlatform, sos[bi].plannedDeparturePlatform) || plat(d.platform, d.plannedPlatform);
         let dist = 0;
@@ -325,10 +333,10 @@
             stops: i - bi - 1, km: Math.round(dist)
           };
           if (sameStop(so.stop, to)) { addResult(st.legs.concat(leg)); continue; }
-          if (!allowed(so.stop)) continue;
+          if (!allowed(so.stop)) { stat.region++; continue; }
           const id = stopId(so.stop);
           if (st.visited.has(id)) continue;
-          if (a + minT + lowerBound(so.stop) > deadline) continue;
+          if (a + minT + lowerBound(so.stop) > deadline) { stat.late++; continue; }
           out.push({ stop: leg.to, t: a, legs: st.legs.concat(leg), visited: new Set([...st.visited, id]), via: d.tripId });
         }
       }));
@@ -417,6 +425,7 @@
     for (let level = 1; level <= depth; level++) {
       prog({ phase: 'Erkunde Ebene ' + level + ' von ' + depth, level, frontier: frontier.length });
       const kids = (await Promise.all(frontier.map(expand))).flat();
+      if (!kids.length && level === 1) o.onWarn && o.onWarn('Ebene 1 ohne Umsteigepunkte: ' + stat.deps + ' Abfahrten, ' + stat.trips + ' Laufwege, ' + stat.region + ' außerhalb Gebiet, ' + stat.late + ' zu spät für Rückweg');
       const beam = o.beam || 8;
       frontier = choose(kids, beam, level, depth);
       prog({ phase: 'Suche Rückwege (Ebene ' + level + ')', level, frontier: frontier.length });

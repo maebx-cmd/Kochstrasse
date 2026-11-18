@@ -9,8 +9,8 @@ und liefert dasselbe JSON wie `hafas-rest-api`: `/api/locations`, `/api/stops/:i
 2. GitHub verbinden, Repo **Kochstrasse** wählen
 3. **Root directory:** `rundreise/worker`
    **Build command:** `npm run build` · **Deploy command:** `npx wrangler deploy`
-4. Deploy → Adresse kopieren, z. B. `https://oebb-rundreise.DEINNAME.workers.dev`
+4. Deploy → Adresse kopieren, z. B. `https://kochstrasse.DEINNAME.workers.dev`
 5. Test im Browser: `…workers.dev/api/locations?query=Imst` muss JSON zeigen
-6. In der App unter **Erweitert → Fahrplan-API** eintragen: `https://oebb-rundreise.DEINNAME.workers.dev/api`
+6. In der App unter **Erweitert → Fahrplan-API** eintragen: `https://kochstrasse.DEINNAME.workers.dev/api`
 
 `dist/worker.js` ist bereits gebaut eingecheckt – nach Änderungen an `src/` neu bauen mit `npm install && npm run build`.

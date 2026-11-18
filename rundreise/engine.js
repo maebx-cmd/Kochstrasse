@@ -178,10 +178,10 @@
       }, 'trip:' + tripId);
       return r.trip || r;
     }
-    async journeys(fromId, toId, whenMs, products, transferTime) {
+    async journeys(fromId, toId, whenMs, products, transferTime, viaId) {
       const r = await this.get('/journeys', Object.assign({
-        from: fromId, to: toId, departure: new Date(whenMs).toISOString(), results: 4,
-        stopovers: false, transferTime: transferTime || 0, remarks: false, language: 'de', pretty: false
+        from: fromId, to: toId, via: viaId || undefined, departure: new Date(whenMs).toISOString(), results: 4,
+        stopovers: true, transferTime: transferTime || 0, remarks: false, language: 'de', pretty: false
       }, this.productParams(products)));
       return r.journeys || [];
     }
@@ -193,6 +193,11 @@
   const arrTime = o => { const t = ms(o.arrival); return isNaN(t) ? ms(o.plannedArrival) : t; };
   const plat = (a, b) => a || b || '';
 
+  function viaStop(so) {
+    const a = arrTime(so), d = depTime(so);
+    return { name: (so.stop && so.stop.name) || '?', arr: isNaN(a) ? null : a, dep: isNaN(d) ? null : d,
+      platform: plat(so.arrivalPlatform, so.plannedArrivalPlatform) || plat(so.departurePlatform, so.plannedDeparturePlatform), cancelled: !!so.cancelled };
+  }
   function lineInfo(line) {
     line = line || {};
     return { name: line.name || line.fahrtNr || '?', product: line.product || '', productName: line.productName || '', mode: line.mode || '' };
@@ -239,6 +244,11 @@
     const lowerBound = s => (km(s, to) / speedKmh) * 3600000;
     const ctx = { isWarm };
 
+    const viaStopObj = o.via && o.via.id ? o.via : null;
+    const touches = s => viaStopObj && sameStop(s, viaStopObj);
+    function legsTouchVia(legs) {
+      return legs.some(L => touches(L.from) || touches(L.to) || (Array.isArray(L.via) && L.via.some(v => touches({ name: v.name }))));
+    }
     const results = new Map();
     const stat = { deps: 0, trips: 0, region: 0, late: 0 };
     const hubLines = new Map(); // stopId -> Set(Linien)
@@ -252,6 +262,8 @@
       if (!legs.length) return;
       const last = legs[legs.length - 1];
       if (last.arr > deadline) return;
+      if (o.earliest && last.arr < o.earliest) return;
+      if (viaStopObj && !legsTouchVia(legs)) return;
       const key = norm(legs[0].from.name) + '>' + legs.map(L => norm(L.to.name)).join('>');
       const s = summarize(legs, ctx);
       const r = { key, legs, ...s };
@@ -332,12 +344,15 @@
             depPlatform: boardPlat, arrPlatform: plat(so.arrivalPlatform, so.plannedArrivalPlatform),
             stops: i - bi - 1, km: Math.round(dist)
           };
-          if (sameStop(so.stop, to)) { addResult(st.legs.concat(leg)); continue; }
+          Object.defineProperty(leg, 'via', { enumerable: true, get() { return sos.slice(bi + 1, i).map(viaStop); } });
+          const viaDone = st.viaDone || !viaStopObj || sos.slice(bi, i + 1).some(x => touches(x.stop));
+          const early = o.earliest && a < o.earliest;
+          if (sameStop(so.stop, to) && !early && viaDone) { addResult(st.legs.concat(leg)); continue; }
           if (!allowed(so.stop)) { stat.region++; continue; }
           const id = stopId(so.stop);
           if (st.visited.has(id)) continue;
           if (a + minT + lowerBound(so.stop) > deadline) { stat.late++; continue; }
-          out.push({ stop: leg.to, t: a, legs: st.legs.concat(leg), visited: new Set([...st.visited, id]), via: d.tripId });
+          out.push({ stop: leg.to, t: a, legs: st.legs.concat(leg), visited: new Set([...st.visited, id]), via: d.tripId, viaDone });
         }
       }));
       return out;
@@ -364,7 +379,9 @@
           + Math.min(km(c.stop, o.from), 120) / 40 + (isWarm(c.stop) ? 1.5 : 0)
           + (slack > 0.5 ? 1 : 0) + Math.random() * 0.8
           - (lastLegMin(c) < 12 ? 3 : 0)
-          - Math.abs(progress - target) * 8;
+          - Math.abs(progress - target) * 8
+          - (viaStopObj && !c.viaDone ? Math.min(km(c.stop, viaStopObj), 150) / 25 : 0)
+          + (viaStopObj && c.viaDone ? 2 : 0);
       }
       arr.sort((a, b) => b.score - a.score);
       const perTrip = new Map(), picked = [];
@@ -381,7 +398,8 @@
     async function complete(st) {
       if (!budgetLeft()) { stopped = stopped || 'Abfrage-Limit erreicht'; return; }
       let js;
-      try { js = await api.journeys(st.stop.id, to.id, st.t + minT, o.products, o.minTransfer); }
+      const needVia = viaStopObj && !st.viaDone && !sameStop(st.stop, viaStopObj);
+      try { js = await api.journeys(st.stop.id, to.id, st.t + minT, o.products, o.minTransfer, needVia ? viaStopObj.id : null); }
       catch (e) { if (e.message === 'abgebrochen') throw e; return; }
       const lastTrip = st.legs[st.legs.length - 1].tripId;
       for (const j of js) {
@@ -407,7 +425,9 @@
             tripId: l.tripId || '', line: lineInfo(l.line), direction: l.direction || '',
             from: slimStop(l.origin), to: slimStop(l.destination), dep, arr,
             depPlatform: plat(l.departurePlatform, l.plannedDeparturePlatform),
-            arrPlatform: plat(l.arrivalPlatform, l.plannedArrivalPlatform), stops: null,
+            arrPlatform: plat(l.arrivalPlatform, l.plannedArrivalPlatform),
+            stops: Array.isArray(l.stopovers) && l.stopovers.length >= 2 ? l.stopovers.length - 2 : null,
+            via: Array.isArray(l.stopovers) && l.stopovers.length >= 2 ? l.stopovers.slice(1, -1).map(viaStop) : null,
             km: Math.round(km(l.origin, l.destination) * 1.2)
           });
           prevArr = arr; prevStop = l.destination;
@@ -421,7 +441,7 @@
     // Start
     const hours = (deadline - o.start) / 3600000;
     const depth = o.depth > 0 ? o.depth : (hours <= 2.5 ? 2 : hours <= 4.5 ? 3 : hours <= 7 ? 4 : 5);
-    let frontier = [{ stop: slimStop(o.from), t: o.start, legs: [], visited: new Set([stopId(o.from)]), via: null }];
+    let frontier = [{ stop: slimStop(o.from), t: o.start, legs: [], visited: new Set([stopId(o.from)]), via: null, viaDone: !viaStopObj || sameStop(o.from, viaStopObj) }];
     for (let level = 1; level <= depth; level++) {
       prog({ phase: 'Erkunde Ebene ' + level + ' von ' + depth, level, frontier: frontier.length });
       const kids = (await Promise.all(frontier.map(expand))).flat();

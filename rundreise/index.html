@@ -104,6 +104,8 @@
   footer a { color:var(--dim); }
   .printbar { display:flex; gap:8px; margin:0 0 10px; flex-wrap:wrap; }
   .pbtn { margin-top:10px; }
+  .pstops { display:inline-flex; align-items:center; gap:7px; cursor:pointer; }
+  .pstops input { width:18px; height:18px; -webkit-appearance:checkbox; appearance:auto; accent-color:var(--acc); margin:0; padding:0; }
   #print { display:none; }
   @media print {
     @page { size:A4; margin:12mm 12mm 14mm; }
@@ -121,8 +123,14 @@
     #print td.n { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
     #print td.t { white-space:nowrap; font-weight:700; font-variant-numeric:tabular-nums; }
     #print tr { break-inside:avoid; }
+    #print h2, #print h3, #print .sub { break-after:avoid; }
+    #print thead { display:table-header-group; }
+    #print .det.long { break-inside:auto; }
     #print .det { break-inside:avoid; margin-top:5mm; padding-top:3mm; border-top:1pt solid #000; }
     #print .sub { font-size:9pt; color:#333; margin-bottom:2mm; }
+    #print tr.v td { font-size:8.5pt; color:#444; padding-top:0.6mm; padding-bottom:0.6mm; border-bottom:0.3pt dotted #bbb; }
+    #print tr.v td.t { font-weight:400; }
+    #print tr.v td.x { text-decoration:line-through; }
     #print tr.w td { color:#444; font-style:italic; background:#f6f6f6; }
     #print .foot { margin-top:6mm; font-size:8pt; color:#555; }
     #print .pagebreak { break-before:page; }
@@ -147,6 +155,12 @@
     <button class="swap" id="swap" title="Tauschen" aria-label="Start und Ziel tauschen">⇅</button>
     <div class="sugg" id="to-s" hidden></div>
   </div>
+  <div class="field">
+    <label for="via">Via (optional)</label>
+    <input id="via" autocomplete="off" placeholder="z. B. St. Anton am Arlberg" style="padding-right:52px">
+    <button class="swap" id="viaclr" title="Via löschen" aria-label="Via löschen">✕</button>
+    <div class="sugg" id="via-s" hidden></div>
+  </div>
   <div class="row dt">
     <div class="field">
       <label for="start">Los ab</label>
@@ -156,14 +170,27 @@
       <label for="deadline">Späteste Ankunft</label>
       <input id="deadline" type="datetime-local">
     </div>
+    <div class="field">
+      <label for="earliest">Früheste Ankunft (optional)</label>
+      <input id="earliest" type="datetime-local" style="padding-right:52px">
+      <button class="swap" id="earlyclr" title="Löschen" aria-label="Früheste Ankunft löschen">✕</button>
+    </div>
   </div>
   <div class="quick" id="quick">
+    <span class="hint" style="align-self:center;margin:0">Späteste:</span>
     <button class="chip" data-h="2">+2 h</button>
     <button class="chip" data-h="3">+3 h</button>
     <button class="chip" data-h="4">+4 h</button>
     <button class="chip" data-h="6">+6 h</button>
     <button class="chip" data-h="8">+8 h</button>
     <button class="chip" id="nowbtn">Jetzt</button>
+  </div>
+  <div class="quick" id="quickmin">
+    <span class="hint" style="align-self:center;margin:0">Mind. unterwegs:</span>
+    <button class="chip" data-m="1">1 h</button>
+    <button class="chip" data-m="2">2 h</button>
+    <button class="chip" data-m="3">3 h</button>
+    <button class="chip" data-m="4">4 h</button>
   </div>
 </div>
 
@@ -272,7 +299,7 @@
     <option value="km">Weiteste Strecke</option>
   </select>
 </div>
-<div class="printbar" id="printbar" hidden><button class="chip" id="printall">🖨 PDF: Übersicht + Details</button><button class="chip" id="printover">🖨 PDF: nur Übersicht</button></div>
+<div class="printbar" id="printbar" hidden><button class="chip" id="printall">🖨 PDF: Übersicht + Details</button><button class="chip" id="printover">🖨 PDF: nur Übersicht</button><label class="chip pstops"><input type="checkbox" id="printstops"> Zwischenhalte im PDF</label></div>
 <div id="results"></div>
 
 <footer>
@@ -290,6 +317,7 @@
   const DEFAULTS = {
     from: { id: '', name: 'Innsbruck Hbf' },
     to: { id: '', name: 'Imst-Pitztal' },
+    via: { id: '', name: '' },
     region: 'vvt',
     prods: { fern: true, reg: true, bus: false, tram: false },
     cold: true, maxwait: 15, warmwait: 45, mintr: 4, maxwaitwarm: 60,
@@ -318,12 +346,17 @@
     const now = new Date(); now.setSeconds(0, 0);
     $('start').value = toLocalInput(now);
     $('deadline').value = toLocalInput(new Date(now.getTime() + hours * 3600000));
+    $('earliest').value = '';
   }
 
   // ---------- Formular laden ----------
   function load() {
     $('from').value = S.from.name; $('from').dataset.id = S.from.id || '';
     $('to').value = S.to.name; $('to').dataset.id = S.to.id || '';
+    const V = S.via || { id: '', name: '' };
+    $('via').value = V.name || ''; $('via').dataset.id = V.id || ''; $('via').dataset.loc = V.location ? JSON.stringify(V.location) : '';
+    if (S.from.location) $('from').dataset.loc = JSON.stringify(S.from.location);
+    if (S.to.location) $('to').dataset.loc = JSON.stringify(S.to.location);
     setTimes(S.hours || 6);
     for (const k of ['maxwait', 'warmwait', 'mintr', 'maxwaitwarm', 'warm', 'depth', 'beam', 'startwin', 'maxcalls', 'extra', 'apibase', 'rpm', 'sort'])
       $(k).value = S[k];
@@ -341,6 +374,9 @@
     const num = (k, d) => { const v = parseInt($(k).value, 10); return isNaN(v) ? d : v; };
     S.from = { id: $('from').dataset.id || '', name: $('from').value.trim() };
     S.to = { id: $('to').dataset.id || '', name: $('to').value.trim() };
+    const locOf = el => { try { return el.dataset.loc ? JSON.parse(el.dataset.loc) : null; } catch (e) { return null; } };
+    S.from.location = locOf($('from')); S.to.location = locOf($('to'));
+    S.via = { id: $('via').dataset.id || '', name: $('via').value.trim(), location: locOf($('via')) };
     S.cold = $('cold').checked;
     S.maxwait = num('maxwait', 15); S.warmwait = num('warmwait', 45); S.mintr = num('mintr', 4); S.maxwaitwarm = num('maxwaitwarm', 60);
     S.warm = $('warm').value; S.depth = num('depth', 0); S.beam = num('beam', 8); S.startwin = num('startwin', 45);
@@ -362,6 +398,12 @@
     $('deadline').value = toLocalInput(new Date(st + S.hours * 3600000)); save();
   });
   $('nowbtn').onclick = () => setTimes(S.hours || 6);
+  $('earlyclr').onclick = () => { $('earliest').value = ''; };
+  $('viaclr').onclick = () => { $('via').value = ''; $('via').dataset.id = ''; $('via').dataset.loc = ''; save(); };
+  document.querySelectorAll('#quickmin .chip').forEach(b => b.onclick = () => {
+    const st = fromLocalInput($('start').value) || Date.now();
+    $('earliest').value = toLocalInput(new Date(st + (+b.dataset.m) * 3600000));
+  });
   $('cold').onchange = () => { paintCold(); save(); };
   $('swap').onclick = () => {
     const a = { v: $('from').value, id: $('from').dataset.id }, b = { v: $('to').value, id: $('to').dataset.id };
@@ -413,6 +455,7 @@
   }
   autocomplete($('from'), $('from-s'));
   autocomplete($('to'), $('to-s'));
+  autocomplete($('via'), $('via-s'));
 
   async function resolve(inp) {
     if (inp.dataset.id && inp.dataset.loc) {
@@ -452,6 +495,8 @@
     save();
     $('errors').innerHTML = '';
     const start = fromLocalInput($('start').value), deadline = fromLocalInput($('deadline').value);
+    const earliest = $('earliest').value ? fromLocalInput($('earliest').value) : null;
+    if (earliest && (earliest <= start || earliest >= deadline - 10 * 60000)) { showError('Die früheste Ankunft muss zwischen Start und spätester Ankunft liegen (mind. 10 min vor dem Limit).'); return; }
     if (!start || !deadline || deadline <= start + 20 * 60000) { showError('Die späteste Ankunft muss mindestens 20 Minuten nach dem Start liegen.'); return; }
     if (!Object.values(S.prods).some(Boolean)) { showError('Bitte mindestens ein Verkehrsmittel wählen.'); return; }
     let a;
@@ -464,9 +509,10 @@
     setStatus('Haltestellen werden gesucht …', 0.02);
     try {
       const from = await resolve($('from')), to = await resolve($('to'));
+      const via = $('via').value.trim() ? await resolve($('via')) : null;
       const onlyFern = S.prods.fern && !S.prods.reg && !S.prods.bus && !S.prods.tram;
       const opts = lastOpts = {
-        from, to, start, deadline, region: S.region,
+        from, to, via, start, deadline, earliest, region: S.region,
         extraAllowed: S.extra.split(',').map(s => s.trim()).filter(Boolean),
         products: productsFromChips(),
         coldMode: S.cold, maxWait: S.maxwait, warmMaxWait: S.warmwait, maxWaitWarm: S.maxwaitwarm,
@@ -485,7 +531,7 @@
       render();
       setStatus((found.length ? found.length + ' Rundreisen gefunden' : 'Keine Rundreise gefunden') + ' · ' + out.calls + ' Abfragen' + (out.stopped ? ' · ' + out.stopped : ''), null);
       if (!found.length && warns.length) showError('Diagnose (bitte als Screenshot schicken):<br><small>' + warns.slice(0, 8).map(esc).join('<br>') + '</small>');
-      if (!found.length) showError('Nichts gefunden. Tipps: mehr Zeit einplanen, Kälte-Wartezeit erhöhen, Bus dazunehmen oder Suchbreite/-tiefe erhöhen.' + (onlyFern ? '<br>Fernzüge fahren meist nur stündlich bis zweistündlich – im Kälte-Modus die Wartezeit mit Warteraum auf 60–120 min erhöhen.' : ''));
+      if (!found.length) showError('Nichts gefunden. Tipps: mehr Zeit einplanen, Kälte-Wartezeit erhöhen, Bus dazunehmen oder Suchbreite/-tiefe erhöhen.' + (opts.via ? '<br>Mit Via: Am Via-Bahnhof gilt im Kälte-Modus die kurze Wartezeit – ggf. den Bahnhof zur Warteraum-Liste hinzufügen oder die Wartezeit erhöhen.' : '') + (opts.earliest ? '<br>Mit früher Ankunft: Suchtiefe/-breite erhöhen hilft, längere Runden zu finden.' : '') + (onlyFern ? '<br>Fernzüge fahren meist nur stündlich bis zweistündlich – im Kälte-Modus die Wartezeit mit Warteraum auf 60–120 min erhöhen.' : ''));
     } catch (e) {
       if (e.message === 'abgebrochen') setStatus('Abgebrochen · ' + found.length + ' Rundreisen bisher', null);
       else {
@@ -542,6 +588,7 @@
     if (lastOpts) {
       const spare = Math.round((lastOpts.deadline - r.arr) / 60000);
       pills.push('<span class="pill">' + (spare > 0 ? spare + ' min Puffer' : 'pünktlich') + '</span>');
+      if (lastOpts.via) pills.push('<span class="pill good">✓ über ' + esc(lastOpts.via.name) + '</span>');
     }
     const via = r.legs.map((L, i) => i === 0 ? esc(L.from.name) : '').join('') +
       r.legs.map(L => ' <em>→</em> ' + esc(L.to.name)).join('');
@@ -576,6 +623,7 @@
     const warten = o.coldMode ? 'Kälte-Modus: max. ' + o.maxWait + ' min, mit Warteraum ' + o.warmMaxWait + ' min' : 'max. ' + o.maxWaitWarm + ' min Wartezeit';
     return '<div class="meta"><b>' + esc(o.from ? o.from.name : '') + ' → ' + esc(o.to ? o.to.name : '') + '</b> · ' +
       (o.start ? dmy(o.start) + ', los ab ' + hm(o.start) + ', späteste Ankunft ' + hm(o.deadline) + (dmy(o.deadline) !== dmy(o.start) ? ' (' + dmy(o.deadline) + ')' : '') : '') +
+      (o.earliest ? ', früheste Ankunft ' + hm(o.earliest) : '') + (o.via ? '<br>Via: <b>' + esc(o.via.name) + '</b>' : '') +
       '<br>Gültigkeit: ' + REGION[o.region || S.region] + ' · Verkehrsmittel: ' + esc(mittel) + ' · ' + warten +
       ' · Mind. Umsteigezeit ' + (o.minTransfer || 0) + ' min<br>Erstellt am ' + dmy(Date.now()) + ' um ' + hm(Date.now()) + '</div>';
   }
@@ -588,6 +636,7 @@
       '</tbody></table>';
   }
   function detailBlock(r, nr) {
+    const withStops = $('printstops').checked;
     let rows = '';
     r.legs.forEach((L, i) => {
       if (i > 0) {
@@ -595,10 +644,13 @@
         rows += '<tr class="w"><td></td><td colspan="4">' + w.min + ' min Umstieg in ' + esc(r.legs[i - 1].to.name) + (w.warm ? ' (Warteraum)' : (w.min > 10 ? ' – ohne Warteraum' : '')) + '</td></tr>';
       }
       const stops = L.stops != null ? (L.stops === 0 ? 'ohne Zwischenhalt' : L.stops + ' Zwischenhalt' + (L.stops === 1 ? '' : 'e')) : '';
-      rows += '<tr><td class="t">ab ' + hm(L.dep) + '</td><td>' + esc(L.from.name) + '</td><td>' + esc(L.depPlatform || '') + '</td><td rowspan="2"><b>' + esc(L.line.name) + '</b><br>→ ' + esc(L.direction) + '</td><td rowspan="2">' + dur(Math.round((L.arr - L.dep) / 60000)) + (stops ? '<br>' + stops : '') + '</td></tr>' +
+      const via = withStops && Array.isArray(L.via) ? L.via : [];
+      const span = 2 + via.length;
+      rows += '<tr><td class="t">ab ' + hm(L.dep) + '</td><td>' + esc(L.from.name) + '</td><td>' + esc(L.depPlatform || '') + '</td><td rowspan="' + span + '"><b>' + esc(L.line.name) + '</b><br>→ ' + esc(L.direction) + '</td><td rowspan="' + span + '">' + dur(Math.round((L.arr - L.dep) / 60000)) + (stops ? '<br>' + stops : '') + '</td></tr>' +
+        via.map(v => '<tr class="v"><td class="t">' + (v.arr ? hm(v.arr) : v.dep ? hm(v.dep) : '') + (v.dep && v.arr && v.dep - v.arr >= 120000 ? '–' + hm(v.dep) : '') + '</td><td' + (v.cancelled ? ' class="x"' : '') + '>' + esc(v.name) + (v.cancelled ? ' (entfällt)' : '') + '</td><td>' + esc(v.platform || '') + '</td></tr>').join('') +
         '<tr><td class="t">an ' + hm(L.arr) + '</td><td>' + esc(L.to.name) + '</td><td>' + esc(L.arrPlatform || '') + '</td></tr>';
     });
-    return '<div class="det"><h3>' + (nr ? 'Nr. ' + nr + ': ' : '') + hm(r.dep) + ' → ' + hm(r.arr) + ' · ' + dur(Math.round((r.arr - r.dep) / 60000)) + '</h3>' +
+    return '<div class="det' + (withStops ? ' long' : '') + '"><h3>' + (nr ? 'Nr. ' + nr + ': ' : '') + hm(r.dep) + ' → ' + hm(r.arr) + ' · ' + dur(Math.round((r.arr - r.dep) / 60000)) + '</h3>' +
       '<div class="sub">' + esc(routeText(r)) + '<br>Fahrt ' + dur(r.rideMin) + ' · Warten ' + dur(r.waitMin) + ' (max. ' + r.maxWaitMin + ' min) · ' + r.transfers + ' Umstiege · ca. ' + r.km + ' km</div>' +
       '<table><thead><tr><th>Zeit</th><th>Halt</th><th>Bstg</th><th>Zug / Richtung</th><th>Fahrzeit</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
@@ -622,6 +674,8 @@
     if (withDetails) html += '<h2 class="pagebreak">Detailverbindungen</h2>' + list.map((r, i) => detailBlock(r, i + 1)).join('');
     doPrint(html, 'Rundreisen ' + fileDate());
   }
+  $('printstops').checked = !!S.printStops;
+  $('printstops').onchange = () => { S.printStops = $('printstops').checked; store.set(S); };
   $('printall').onclick = () => printList(true);
   $('printover').onclick = () => printList(false);
   $('results').addEventListener('click', ev => {

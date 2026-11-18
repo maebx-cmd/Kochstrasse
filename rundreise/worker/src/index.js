@@ -51,6 +51,7 @@ async function route(url) {
 		if (!from || !to) return json(400, {msg: 'from/to fehlt'});
 		const r = await hafas.journeys(from, to, {
 			departure: date(q.get('departure')), results: int(q.get('results'), 4),
+			...(q.get('via') ? {via: q.get('via')} : {}),
 			transferTime: int(q.get('transferTime'), 0), stopovers: q.get('stopovers') === 'true',
 			products: products(q), remarks: false, language: 'de',
 		});

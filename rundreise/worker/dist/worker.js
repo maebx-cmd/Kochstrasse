@@ -17427,6 +17427,7 @@ async function route(url) {
     const r = await hafas.journeys(from, to, {
       departure: date(q.get("departure")),
       results: int2(q.get("results"), 4),
+      ...q.get("via") ? { via: q.get("via") } : {},
       transferTime: int2(q.get("transferTime"), 0),
       stopovers: q.get("stopovers") === "true",
       products: products2(q),

@@ -24,15 +24,8 @@ Das Gebiet wird über die Lage der Ein-/Umsteigehalte bestimmt (Durchfahrten, z.
 Keine echte Tarifauskunft.
 
 ## Fahrplan-API
-Standard ist die öffentliche Community-Instanz `https://v6.oebb.transport.rest/api` (ÖBB-HAFAS).
-Fällt sie aus oder ist sie zu langsam, kannst du in `server/` eine eigene am Raspberry Pi starten:
+Die öffentliche Instanz `v6.oebb.transport.rest` ist nicht nutzbar (ungültiges HTTPS-Zertifikat).
+Darum läuft die Schnittstelle als eigener **Cloudflare Worker** – Anleitung in `worker/README.md`.
+Die Adresse wird einmalig in der App unter **Erweitert → Fahrplan-API** eingetragen.
 
-```sh
-cd server
-docker build -t oebb-rest .
-docker run -d --restart unless-stopped -p 3000:3000 --name oebb-rest oebb-rest
-```
-
-Dann in der App unter **Erweitert → Fahrplan-API** z. B. `https://dein-pi.example/api` eintragen.
-Wichtig: GitHub Pages läuft über HTTPS, die API muss also auch über **HTTPS** erreichbar sein
-(z. B. über deinen bestehenden Reverse-Proxy oder einen Cloudflare-Tunnel).
+Alternative: `server/` (Docker, hafas-rest-api) – braucht aber eine öffentliche HTTPS-Adresse.

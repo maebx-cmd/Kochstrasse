@@ -1,0 +1,5 @@
+name = "oebb-rundreise"
+main = "dist/worker.js"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+no_bundle = true

@@ -1,0 +1,16 @@
+{
+  "name": "oebb-rundreise-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.js --bundle --format=esm --platform=neutral --main-fields=module,main --conditions=worker,browser --outfile=dist/worker.js --alias:https-proxy-agent=./stubs/empty-agent.js --alias:https=./stubs/empty-agent.js --alias:net=./stubs/empty-agent.js --alias:cross-fetch=./stubs/fetch.js --alias:create-hash=./stubs/create-hash.js --alias:crypto=./stubs/crypto.js --alias:buffer=node:buffer --external:node:* --external:crypto --external:buffer --external:util --external:stream --external:events --external:string_decoder --external:url --external:zlib --external:http --external:path --external:fs --external:os --external:tls --external:assert --define:process.env.HTTPS_PROXY=undefined --define:process.env.HTTP_PROXY=undefined --define:process.env.LOCAL_ADDRESS=undefined --define:process.env.DEBUG=undefined '--banner:js=import __nodeUtil from \"node:util\"; const require = (m) => { if (m === \"util\" || m === \"node:util\") return __nodeUtil; throw new Error(\"require nicht verf\u00fcgbar: \" + m); };'",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hafas-client": "6.3.6"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "wrangler": "^4"
+  }
+}

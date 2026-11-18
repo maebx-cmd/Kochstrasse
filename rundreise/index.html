@@ -222,8 +222,8 @@
   </div>
   <div class="field">
     <label for="apibase">Fahrplan-API (hafas-rest-api, ÖBB-Profil)</label>
-    <input id="apibase" autocapitalize="off" autocorrect="off" spellcheck="false">
-    <div class="hint">Standard: öffentliche Community-Instanz. Eigene Instanz (z. B. Raspberry Pi) siehe README.</div>
+    <input id="apibase" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://….workers.dev/api">
+    <div class="hint">Adresse deines Cloudflare Workers, z. B. https://oebb-rundreise.NAME.workers.dev/api (Anleitung: worker/README.md).</div>
   </div>
   <div class="field">
     <label for="rpm">Abfragen pro Minute</label>
@@ -268,7 +268,7 @@
     cold: true, maxwait: 15, warmwait: 45, mintr: 4, maxwaitwarm: 60,
     warm: 'Innsbruck Hbf, Wörgl Hbf, Kufstein, Jenbach, Landeck-Zams',
     depth: 0, beam: 8, startwin: 45, maxcalls: 300, extra: 'Oberaudorf',
-    apibase: 'https://v6.oebb.transport.rest/api', rpm: 90, sort: 'ride', hours: 6
+    apibase: '', rpm: 90, sort: 'ride', hours: 6
   };
   const store = {
     get() { try { return JSON.parse(localStorage.getItem('rundreise.v1') || 'null'); } catch (e) { return null; } },
@@ -315,7 +315,7 @@
     S.cold = $('cold').checked;
     S.maxwait = num('maxwait', 15); S.warmwait = num('warmwait', 45); S.mintr = num('mintr', 4); S.maxwaitwarm = num('maxwaitwarm', 60);
     S.warm = $('warm').value; S.depth = num('depth', 0); S.beam = num('beam', 8); S.startwin = num('startwin', 45);
-    S.maxcalls = num('maxcalls', 300); S.extra = $('extra').value; S.apibase = $('apibase').value.trim() || DEFAULTS.apibase;
+    S.maxcalls = num('maxcalls', 300); S.extra = $('extra').value; S.apibase = $('apibase').value.trim();
     S.rpm = num('rpm', 90); S.sort = $('sort').value;
     store.set(S);
   }
@@ -345,7 +345,8 @@
   // ---------- API ----------
   let api = null;
   function getApi() {
-    const base = S.apibase || DEFAULTS.apibase;
+    const base = S.apibase;
+    if (!base) throw new Error('Keine Fahrplan-API eingetragen – unter „Erweitert → Fahrplan-API“ die Worker-Adresse eintragen (siehe rundreise/worker/README.md).');
     if (!api || api.base !== base.replace(/\/+$/, '')) api = new Rundreise.Api(base, { rpm: S.rpm, conc: 4 });
     api.rpm = S.rpm;
     return api;
@@ -419,7 +420,8 @@
     const start = fromLocalInput($('start').value), deadline = fromLocalInput($('deadline').value);
     if (!start || !deadline || deadline <= start + 20 * 60000) { showError('Die späteste Ankunft muss mindestens 20 Minuten nach dem Start liegen.'); return; }
     if (!Object.values(S.prods).some(Boolean)) { showError('Bitte mindestens ein Verkehrsmittel wählen.'); return; }
-    const a = getApi();
+    let a;
+    try { a = getApi(); } catch (e) { showError(esc(e.message)); return; }
     running = new AbortController();
     a.signal = running.signal;
     a.calls = 0;

@@ -102,6 +102,31 @@
   .empty { color:var(--dim); font-size:15px; padding:14px; text-align:center; }
   footer { margin-top:24px; font-size:12px; color:var(--dim); line-height:1.5; }
   footer a { color:var(--dim); }
+  .printbar { display:flex; gap:8px; margin:0 0 10px; flex-wrap:wrap; }
+  .pbtn { margin-top:10px; }
+  #print { display:none; }
+  @media print {
+    @page { size:A4; margin:12mm 12mm 14mm; }
+    html, body { background:#fff !important; color:#000 !important; }
+    body { padding:0 !important; max-width:none !important; font-size:10pt; }
+    body > *:not(#print) { display:none !important; }
+    #print { display:block !important; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:#000; }
+    #print h1 { font-size:17pt; margin:0 0 2mm; border-bottom:2pt solid #000; padding-bottom:1.5mm; }
+    #print h2 { font-size:12pt; margin:6mm 0 2mm; color:#000; text-transform:none; letter-spacing:0; }
+    #print h3 { font-size:11pt; margin:0 0 1.5mm; }
+    #print .meta { font-size:9pt; color:#333; margin-bottom:4mm; line-height:1.45; }
+    #print table { width:100%; border-collapse:collapse; font-size:9pt; }
+    #print th, #print td { border-bottom:0.5pt solid #999; padding:1.2mm 1.5mm; text-align:left; vertical-align:top; }
+    #print th { background:#eee; font-weight:700; border-bottom:1pt solid #000; }
+    #print td.n { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    #print td.t { white-space:nowrap; font-weight:700; font-variant-numeric:tabular-nums; }
+    #print tr { break-inside:avoid; }
+    #print .det { break-inside:avoid; margin-top:5mm; padding-top:3mm; border-top:1pt solid #000; }
+    #print .sub { font-size:9pt; color:#333; margin-bottom:2mm; }
+    #print tr.w td { color:#444; font-style:italic; background:#f6f6f6; }
+    #print .foot { margin-top:6mm; font-size:8pt; color:#555; }
+    #print .pagebreak { break-before:page; }
+  }
 </style>
 </head>
 <body>
@@ -247,6 +272,7 @@
     <option value="km">Weiteste Strecke</option>
   </select>
 </div>
+<div class="printbar" id="printbar" hidden><button class="chip" id="printall">🖨 PDF: Übersicht + Details</button><button class="chip" id="printover">🖨 PDF: nur Übersicht</button></div>
 <div id="results"></div>
 
 <footer>
@@ -254,6 +280,7 @@
   Angaben ohne Gewähr; Gültigkeitsgebiet wird über Lage der Umsteigehalte geschätzt.
   Vor Abfahrt in ÖBB Scotty bzw. am Abfahrtsmonitor prüfen.
 </footer>
+<div id="print" aria-hidden="true"></div>
 
 <script src="engine.js"></script>
 <script>
@@ -497,6 +524,7 @@
   function render() {
     const box = $('results');
     $('reshead').hidden = !found.length;
+    $('printbar').hidden = !found.length;
     $('rescount').textContent = found.length + ' Rundreise' + (found.length === 1 ? '' : 'n');
     if (!found.length) { box.innerHTML = ''; return; }
     const openKeys = new Set([...box.querySelectorAll('details[open]')].map(d => d.dataset.k));
@@ -536,8 +564,74 @@
       '<div class="rtime"><b>' + hm(r.dep) + ' → ' + hm(r.arr) + '</b><span>' + dur(total) + '</span></div>' +
       '<div class="rvia">' + via + '</div>' +
       '<div class="rmeta">' + pills.join('') + '</div>' +
-      '</summary><div class="legs">' + legs + '</div></details>';
+      '</summary><div class="legs">' + legs + '<button class="chip pbtn" data-print="' + esc(r.key) + '">🖨 PDF dieser Verbindung</button></div></details>';
   }
+
+  // ---------- PDF / Druck ----------
+  const dmy = t => { const d = new Date(t); return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear(); };
+  const REGION = { vvt: 'VVT (nur Tirol)', at: 'Klimaticket Ö (ganz Österreich)', all: 'ohne Grenze' };
+  function printMeta() {
+    const o = lastOpts || {};
+    const p = S.prods, mittel = [p.fern && 'Fernverkehr', p.reg && 'Regionalzug/S-Bahn', p.bus && 'Bus', p.tram && 'Tram'].filter(Boolean).join(', ');
+    const warten = o.coldMode ? 'Kälte-Modus: max. ' + o.maxWait + ' min, mit Warteraum ' + o.warmMaxWait + ' min' : 'max. ' + o.maxWaitWarm + ' min Wartezeit';
+    return '<div class="meta"><b>' + esc(o.from ? o.from.name : '') + ' → ' + esc(o.to ? o.to.name : '') + '</b> · ' +
+      (o.start ? dmy(o.start) + ', los ab ' + hm(o.start) + ', späteste Ankunft ' + hm(o.deadline) + (dmy(o.deadline) !== dmy(o.start) ? ' (' + dmy(o.deadline) + ')' : '') : '') +
+      '<br>Gültigkeit: ' + REGION[o.region || S.region] + ' · Verkehrsmittel: ' + esc(mittel) + ' · ' + warten +
+      ' · Mind. Umsteigezeit ' + (o.minTransfer || 0) + ' min<br>Erstellt am ' + dmy(Date.now()) + ' um ' + hm(Date.now()) + '</div>';
+  }
+  function routeText(r) { return [r.legs[0].from.name].concat(r.legs.map(L => L.to.name)).join(' → '); }
+  function overviewTable(list) {
+    return '<table><thead><tr><th>Nr.</th><th>Ab</th><th>An</th><th>Dauer</th><th>Fahrt</th><th>Warten</th><th>max.</th><th>Umst.</th><th>km</th><th>Route</th></tr></thead><tbody>' +
+      list.map((r, i) => '<tr><td class="n">' + (i + 1) + '</td><td class="t">' + hm(r.dep) + '</td><td class="t">' + hm(r.arr) + '</td><td class="n">' +
+        dur(Math.round((r.arr - r.dep) / 60000)) + '</td><td class="n">' + dur(r.rideMin) + '</td><td class="n">' + dur(r.waitMin) + '</td><td class="n">' +
+        r.maxWaitMin + ' min</td><td class="n">' + r.transfers + '</td><td class="n">' + r.km + '</td><td>' + esc(routeText(r)) + '</td></tr>').join('') +
+      '</tbody></table>';
+  }
+  function detailBlock(r, nr) {
+    let rows = '';
+    r.legs.forEach((L, i) => {
+      if (i > 0) {
+        const w = r.waits[i - 1];
+        rows += '<tr class="w"><td></td><td colspan="4">' + w.min + ' min Umstieg in ' + esc(r.legs[i - 1].to.name) + (w.warm ? ' (Warteraum)' : (w.min > 10 ? ' – ohne Warteraum' : '')) + '</td></tr>';
+      }
+      const stops = L.stops != null ? (L.stops === 0 ? 'ohne Zwischenhalt' : L.stops + ' Zwischenhalt' + (L.stops === 1 ? '' : 'e')) : '';
+      rows += '<tr><td class="t">ab ' + hm(L.dep) + '</td><td>' + esc(L.from.name) + '</td><td>' + esc(L.depPlatform || '') + '</td><td rowspan="2"><b>' + esc(L.line.name) + '</b><br>→ ' + esc(L.direction) + '</td><td rowspan="2">' + dur(Math.round((L.arr - L.dep) / 60000)) + (stops ? '<br>' + stops : '') + '</td></tr>' +
+        '<tr><td class="t">an ' + hm(L.arr) + '</td><td>' + esc(L.to.name) + '</td><td>' + esc(L.arrPlatform || '') + '</td></tr>';
+    });
+    return '<div class="det"><h3>' + (nr ? 'Nr. ' + nr + ': ' : '') + hm(r.dep) + ' → ' + hm(r.arr) + ' · ' + dur(Math.round((r.arr - r.dep) / 60000)) + '</h3>' +
+      '<div class="sub">' + esc(routeText(r)) + '<br>Fahrt ' + dur(r.rideMin) + ' · Warten ' + dur(r.waitMin) + ' (max. ' + r.maxWaitMin + ' min) · ' + r.transfers + ' Umstiege · ca. ' + r.km + ' km</div>' +
+      '<table><thead><tr><th>Zeit</th><th>Halt</th><th>Bstg</th><th>Zug / Richtung</th><th>Fahrzeit</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  function doPrint(html, title) {
+    $('print').innerHTML = html +
+      '<div class="foot">Fahrplandaten: ÖBB (HAFAS). Angaben ohne Gewähr – vor Abfahrt in ÖBB Scotty bzw. am Abfahrtsmonitor prüfen.</div>';
+    const old = document.title;
+    document.title = title;
+    const restore = () => { document.title = old; window.removeEventListener('afterprint', restore); };
+    window.addEventListener('afterprint', restore);
+    setTimeout(() => window.print(), 50);
+    setTimeout(restore, 5000);
+  }
+  const fileDate = () => { const d = new Date(lastOpts ? lastOpts.start : Date.now()); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  function printList(withDetails) {
+    const list = sorted();
+    if (!list.length) return;
+    const sortName = $('sort').options[$('sort').selectedIndex].text;
+    let html = '<h1>Rundreisen</h1>' + printMeta() +
+      '<h2>Übersicht – ' + list.length + ' Verbindung' + (list.length === 1 ? '' : 'en') + ' (sortiert: ' + esc(sortName) + ')</h2>' + overviewTable(list);
+    if (withDetails) html += '<h2 class="pagebreak">Detailverbindungen</h2>' + list.map((r, i) => detailBlock(r, i + 1)).join('');
+    doPrint(html, 'Rundreisen ' + fileDate());
+  }
+  $('printall').onclick = () => printList(true);
+  $('printover').onclick = () => printList(false);
+  $('results').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-print]');
+    if (!b) return;
+    ev.preventDefault();
+    const r = found.find(x => x.key === b.dataset.print);
+    if (!r) return;
+    doPrint('<h1>Rundreise</h1>' + printMeta() + detailBlock(r, 0), 'Rundreise ' + fileDate() + ' ' + hm(r.dep).replace(':', ''));
+  });
 
   load();
 })();

@@ -268,7 +268,7 @@
     cold: true, maxwait: 15, warmwait: 45, mintr: 4, maxwaitwarm: 60,
     warm: 'Innsbruck Hbf, Wörgl Hbf, Kufstein, Jenbach, Landeck-Zams',
     depth: 0, beam: 8, startwin: 45, maxcalls: 300, extra: 'Oberaudorf',
-    apibase: '', rpm: 90, sort: 'ride', hours: 6
+    apibase: 'https://kochstrasse.ma-eberharter-94.workers.dev/api', rpm: 90, sort: 'ride', hours: 6
   };
   const store = {
     get() { try { return JSON.parse(localStorage.getItem('rundreise.v1') || 'null'); } catch (e) { return null; } },
@@ -276,6 +276,7 @@
   };
   let S = Object.assign({}, DEFAULTS, store.get() || {});
   S.prods = Object.assign({}, DEFAULTS.prods, S.prods || {});
+  if (!S.apibase || /transport\.rest/.test(S.apibase)) S.apibase = DEFAULTS.apibase; // alte, defekte Instanz ersetzen
 
   // ---------- Zeit ----------
   const pad = n => String(n).padStart(2, '0');
@@ -315,7 +316,7 @@
     S.cold = $('cold').checked;
     S.maxwait = num('maxwait', 15); S.warmwait = num('warmwait', 45); S.mintr = num('mintr', 4); S.maxwaitwarm = num('maxwaitwarm', 60);
     S.warm = $('warm').value; S.depth = num('depth', 0); S.beam = num('beam', 8); S.startwin = num('startwin', 45);
-    S.maxcalls = num('maxcalls', 300); S.extra = $('extra').value; S.apibase = $('apibase').value.trim();
+    S.maxcalls = num('maxcalls', 300); S.extra = $('extra').value; S.apibase = $('apibase').value.trim() || DEFAULTS.apibase;
     S.rpm = num('rpm', 90); S.sort = $('sort').value;
     store.set(S);
   }

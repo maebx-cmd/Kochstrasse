@@ -1,6 +1,7 @@
 /* Gemeinsames Layout für Startseite und Unterseiten (Kacheln) */
 :root { --bg:#0e1a24; --card:#152635; --card-hi:#1c3246; --fg:#f2f5f7; --dim:#8fa3b3;
         --ivb:#e30613; --oebb:#d2001e; --vvt:#00965e; --db:#ec0016; --acc:#f5b800; }
+[hidden] { display:none !important; }
 * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
 body { background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
        padding:calc(env(safe-area-inset-top) + 12px) calc(env(safe-area-inset-right) + 14px)
@@ -12,17 +13,17 @@ h1 { font-size:24px; font-weight:800; letter-spacing:-.01em; }
 #uhr { font-size:24px; font-weight:600; font-variant-numeric:tabular-nums; }
 a.back { color:var(--dim); text-decoration:none; font-size:15px; font-weight:600; white-space:nowrap; }
 h2 { font-size:12px; font-weight:600; color:var(--dim); text-transform:uppercase; letter-spacing:.08em;
-     margin:14px 2px 7px; display:flex; align-items:center; gap:8px; }
+     margin:11px 2px 6px; display:flex; align-items:center; gap:8px; }
 h2::before { content:""; width:9px; height:9px; border-radius:3px; background:var(--c, var(--acc)); }
 .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; }
-.btn { display:flex; flex-direction:column; justify-content:space-between; gap:8px; min-height:70px;
-       padding:10px 13px; border-radius:13px; background:var(--card); color:var(--fg); text-decoration:none;
+.btn { display:flex; flex-direction:column; justify-content:space-between; gap:6px; min-height:62px;
+       padding:9px 13px; border-radius:13px; background:var(--card); color:var(--fg); text-decoration:none;
        border:0; border-left:5px solid var(--c); font:inherit; text-align:left; cursor:pointer;
        transition:transform .08s, background .15s; }
 .btn:active { transform:scale(.97); background:var(--card-hi); }
 @media (hover:hover) { .btn:hover { background:var(--card-hi); } }
 .name { font-size:17px; font-weight:700; line-height:1.15; }
-.meta { display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:12px; color:var(--dim); width:100%; }
+.meta { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:12px; color:var(--dim); width:100%; }
 .tag { font-size:10px; font-weight:800; letter-spacing:.04em; padding:2px 6px; border-radius:5px;
        background:var(--c); color:#fff; flex-shrink:0; }
 .btn.gross { grid-column:1 / -1; }

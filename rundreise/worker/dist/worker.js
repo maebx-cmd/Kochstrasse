@@ -17395,12 +17395,64 @@ var date = (v) => {
   const d = v ? new Date(v) : /* @__PURE__ */ new Date();
   return isNaN(d) ? /* @__PURE__ */ new Date() : d;
 };
+var OEBB_STATIONS = "https://live.oebb.at/assets/assets/stations.json";
+var OEBB_PLC = "https://meine.oebb.at/abfahrtankunft/api/evaNrs/";
+var UA = { "user-agent": "Mozilla/5.0 (kochstrasse wagenstand; github.com/maebx-cmd/Kochstrasse)", accept: "application/json" };
+var stationList = null;
+var stationListAt = 0;
+var norm = (s2) => s2.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\bhauptbahnhof\b/g, "hbf").replace(/\bst\.?\s*/g, "sankt ").replace(/[^a-z0-9]+/g, " ").trim();
+var cleanName = (n2) => n2.replace(/\s+(Bahnhof|Bahnhst|Bahnhst\.|Bahnsteig)$/i, "").trim();
+async function stations() {
+  if (stationList && Date.now() - stationListAt < 12 * 36e5) return stationList;
+  const r = await fetch(OEBB_STATIONS, { headers: UA, cf: { cacheTtl: 86400, cacheEverything: true } });
+  if (!r.ok) throw new Error("\xD6BB-Bahnhofsliste nicht erreichbar (HTTP " + r.status + ")");
+  const raw = await r.json();
+  stationList = raw.filter((s2) => s2 && s2.eva && s2.name).map((s2) => ({ eva: String(s2.eva), name: cleanName(s2.name), key: norm(cleanName(s2.name)) }));
+  stationListAt = Date.now();
+  return stationList;
+}
+async function searchStations(query, limit) {
+  const q = norm(query);
+  if (!q) return [];
+  const words = q.split(" ");
+  const list = await stations();
+  const hits = [];
+  for (const s2 of list) {
+    if (!words.every((w) => s2.key.includes(w))) continue;
+    let score = 0;
+    if (s2.key === q) score += 100;
+    if (s2.key.startsWith(q)) score += 50;
+    if (s2.key.split(" ").some((p) => p.startsWith(words[0]))) score += 20;
+    if (/\bhbf\b/.test(s2.key)) score += 10;
+    if (s2.eva.startsWith("81")) score += 5;
+    score -= s2.key.length / 100;
+    hits.push({ score, eva: s2.eva, name: s2.name });
+  }
+  hits.sort((a, b) => b.score - a.score);
+  return hits.slice(0, limit).map(({ eva, name }) => ({ eva, name }));
+}
+async function plcFor(eva) {
+  const r = await fetch(OEBB_PLC + encodeURIComponent(eva), { headers: UA });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("\xD6BB-Webdisplay nicht erreichbar (HTTP " + r.status + ")");
+  const j = await r.json();
+  return j && j.plc ? { eva: String(eva), plc: String(j.plc), name: j.name || null } : null;
+}
 async function route(url) {
-  if (!hafas) hafas = createClient(profile, "rundreise (github.com/maebx-cmd/Kochstrasse)");
   const q = url.searchParams;
   const path = url.pathname.replace(/^\/api/, "").replace(/\/+$/, "") || "/";
   let m;
   if (path === "/") return json(200, { ok: true, name: "oebb-rundreise-worker" });
+  if (path === "/wagenstand/stations") {
+    const query = q.get("q") || q.get("query") || "";
+    if (query.trim().length < 2) return json(400, { msg: "mindestens 2 Zeichen" });
+    return json(200, await searchStations(query, Math.min(int2(q.get("results"), 12), 30)), 3600);
+  }
+  if (m = path.match(/^\/wagenstand\/plc\/(\d{6,9})$/)) {
+    const r = await plcFor(m[1]);
+    return r ? json(200, r, 86400) : json(404, { msg: "F\xFCr diesen Bahnhof gibt es kein Webdisplay" });
+  }
+  if (!hafas) hafas = createClient(profile, "rundreise (github.com/maebx-cmd/Kochstrasse)");
   if (path === "/locations") {
     const query = q.get("query");
     if (!query) return json(400, { msg: "query fehlt" });

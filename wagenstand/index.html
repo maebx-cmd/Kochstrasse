@@ -34,6 +34,19 @@
   .meta { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--dim); width:100%; }
   .tag { font-size:11px; font-weight:800; letter-spacing:.04em; padding:3px 7px; border-radius:5px;
          background:var(--oebb); color:#fff; }
+  .suche input { width:100%; font:inherit; font-size:18px; padding:14px 16px; border-radius:14px;
+                 border:2px solid var(--card-hi); background:var(--card); color:var(--fg); -webkit-appearance:none; }
+  .suche input:focus { outline:none; border-color:var(--acc); }
+  .status { color:var(--dim); font-size:14px; margin:8px 4px 0; min-height:0; }
+  .status:empty { display:none; }
+  .status.err { color:#ff7a7a; }
+  .treffer { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .treffer button { display:flex; justify-content:space-between; align-items:center; gap:10px; width:100%;
+                    font:inherit; font-size:17px; font-weight:600; text-align:left; padding:13px 16px; border-radius:12px;
+                    border:0; border-left:5px solid var(--oebb); background:var(--card); color:var(--fg); cursor:pointer; }
+  .treffer button:active { background:var(--card-hi); }
+  .treffer .eva { font-size:12px; color:var(--dim); font-weight:500; font-variant-numeric:tabular-nums; }
+  .treffer button[disabled] { opacity:.6; }
   p.hint { color:var(--dim); font-size:13px; line-height:1.45; margin:22px 2px 0; }
 
   /* Gleis-Dialog */
@@ -56,6 +69,16 @@
 </head>
 <body>
 <header><h1>Wagenstandsanzeiger</h1><a class="back" href="../start.html">‹ Start</a></header>
+
+<h2>Bahnhof suchen</h2>
+<div class="suche">
+  <input id="such" type="search" placeholder="z. B. Kufstein, Bludenz, Linz …" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+  <div id="status" class="status"></div>
+  <div id="treffer" class="treffer"></div>
+</div>
+
+<h2 id="zuletztH" hidden>Zuletzt gesucht</h2>
+<div class="grid" id="zuletzt"></div>
 
 <h2>ÖBB · Bahnhof wählen</h2>
 <div class="grid" id="grid"></div>
@@ -129,14 +152,94 @@ Angezeigt werden nur Fernverkehrszüge mit Wagenreihung – ist das Bild leer, h
     location.href = url(aktiv.plc, gleis);
   };
 
-  BAHNHOEFE.forEach(bhf => {
+  const kachel = (bhf, ziel, meta) => {
     const b = document.createElement("button");
     b.className = "btn";
-    b.innerHTML = '<span class="name"></span><span class="meta">Wagenreihung <span class="tag">ÖBB</span></span>';
+    b.innerHTML = '<span class="name"></span><span class="meta"><span class="m"></span> <span class="tag">ÖBB</span></span>';
     b.querySelector(".name").textContent = bhf.name;
+    b.querySelector(".m").textContent = meta || "Wagenreihung";
     b.onclick = () => oeffne(bhf);
-    grid.appendChild(b);
-  });
+    ziel.appendChild(b);
+  };
+  BAHNHOEFE.forEach(bhf => kachel(bhf, grid));
+
+  // ---------- Bahnhofsuche über den Cloudflare Worker ----------
+  // Worker: Name → EVA (ÖBB-Live-Bahnhofsliste), EVA → plc (meine.oebb.at). Direkt geht's wegen CORS nicht.
+  const API = (() => {
+    try { const r = JSON.parse(localStorage.getItem("rundreise.v1") || "null"); if (r && r.apibase) return r.apibase.replace(/\/+$/, ""); } catch (e) {}
+    return "https://kochstrasse.ma-eberharter-94.workers.dev/api";
+  })();
+
+  const such = document.getElementById("such");
+  const status = document.getElementById("status");
+  const treffer = document.getElementById("treffer");
+  const zuletzt = document.getElementById("zuletzt");
+  const zuletztH = document.getElementById("zuletztH");
+  const setStatus = (t, err) => { status.textContent = t || ""; status.classList.toggle("err", !!err); };
+
+  const ladeGesucht = () => { try { return JSON.parse(localStorage.getItem("ws-gesucht")) || []; } catch (e) { return []; } };
+  const zeigeGesucht = () => {
+    zuletzt.innerHTML = "";
+    const l = ladeGesucht().filter(s => !BAHNHOEFE.some(b => b.plc === s.plc));
+    zuletztH.hidden = !l.length;
+    l.forEach(s => kachel(s, zuletzt, "Gesucht"));
+  };
+  const merkeGesucht = s => {
+    try {
+      const l = [s, ...ladeGesucht().filter(x => x.plc !== s.plc)].slice(0, 6);
+      localStorage.setItem("ws-gesucht", JSON.stringify(l));
+    } catch (e) {}
+    zeigeGesucht();
+  };
+  zeigeGesucht();
+
+  let suchNr = 0, timer = null;
+  const suche = async q => {
+    const nr = ++suchNr;
+    treffer.innerHTML = "";
+    if (q.trim().length < 2) { setStatus(""); return; }
+    setStatus("Suche …");
+    try {
+      const r = await fetch(API + "/wagenstand/stations?q=" + encodeURIComponent(q.trim()));
+      const j = await r.json();
+      if (nr !== suchNr) return;
+      if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
+      if (!j.length) { setStatus("Kein Bahnhof gefunden."); return; }
+      setStatus("");
+      j.forEach(s => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.innerHTML = '<span class="n"></span><span class="eva"></span>';
+        b.querySelector(".n").textContent = s.name;
+        b.querySelector(".eva").textContent = "EVA " + s.eva;
+        b.onclick = () => waehle(s, b);
+        treffer.appendChild(b);
+      });
+    } catch (e) {
+      if (nr === suchNr) setStatus("Suche fehlgeschlagen: " + e.message, true);
+    }
+  };
+
+  const waehle = async (s, btn) => {
+    btn.disabled = true;
+    setStatus("Hole Webdisplay-Nummer für " + s.name + " …");
+    try {
+      const r = await fetch(API + "/wagenstand/plc/" + encodeURIComponent(s.eva));
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
+      const bhf = { name: s.name, eva: s.eva, plc: j.plc };
+      setStatus("");
+      merkeGesucht(bhf);
+      oeffne(bhf);
+    } catch (e) {
+      setStatus(s.name + ": " + e.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  such.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => suche(such.value), 250); });
+  such.addEventListener("keydown", e => { if (e.key === "Enter") { clearTimeout(timer); suche(such.value); such.blur(); } });
 
   document.getElementById("form").addEventListener("submit", e => { e.preventDefault(); los(input.value); });
   document.getElementById("abbrechen").onclick = () => dlg.close();

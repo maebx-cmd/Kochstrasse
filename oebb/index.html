@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0e1a24">
+<link rel="apple-touch-icon" href="../icon.png">
+<link rel="stylesheet" href="../ui.css">
+<title>ÖBB · Weitere Bahnhöfe</title>
+</head>
+<body>
+<header><h1>ÖBB · Weitere</h1><a class="back" href="../start.html">‹ Start</a></header>
+
+<h2 class="oebb">Abfahrtsmonitor suchen</h2>
+<div class="suche">
+  <div class="seg" id="seg">
+    <button type="button" data-art="departure" class="on">Abfahrt</button>
+    <button type="button" data-art="arrival">Ankunft</button>
+  </div>
+  <input id="such" type="search" placeholder="Bahnhof, z. B. Kufstein, Bludenz …" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+  <div id="status" class="status"></div>
+  <div id="treffer" class="treffer"></div>
+</div>
+
+<h2 class="oebb" id="zuletztH" hidden>Zuletzt gesucht</h2>
+<div class="grid" id="zuletzt"></div>
+
+<h2 class="oebb">Bahnhöfe</h2>
+<div class="grid" id="fix"></div>
+
+<p class="hint">Die Suche nimmt die Bahnhofsliste von ÖBB Live (Österreich) und öffnet den Live-Monitor von meine.oebb.at –
+mit Gleis und Gleisänderungen, wie am Bahnhof.</p>
+
+<script>
+  const FIX = [
+    { name: "Landeck-Zams", eva: "8100063" },
+    { name: "Roppen",       eva: "8101448" },
+    { name: "Schönwies",    eva: "8101629" },
+  ];
+  const API = (() => {
+    try { const r = JSON.parse(localStorage.getItem("rundreise.v1") || "null"); if (r && r.apibase) return r.apibase.replace(/\/+$/, ""); } catch (e) {}
+    return "https://kochstrasse.ma-eberharter-94.workers.dev/api";
+  })();
+
+  // Abfahrt/Ankunft – Wahl bleibt gespeichert
+  let art = "departure";
+  try { art = localStorage.getItem("am-art") || "departure"; } catch (e) {}
+  const seg = document.getElementById("seg");
+  const zeigeArt = () => seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.art === art));
+  seg.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    art = b.dataset.art; try { localStorage.setItem("am-art", art); } catch (e) {}
+    zeigeArt(); zeigeKacheln();
+  });
+  zeigeArt();
+
+  const url = eva => art === "arrival"
+    ? "https://meine.oebb.at/abfahrtankunft/arrival?evaNr=" + encodeURIComponent(eva) + "&static=true&page=1&offset=0&ignoreIncident=false&contentType=arrivals"
+    : "https://meine.oebb.at/abfahrtankunft/departure?evaNr=" + encodeURIComponent(eva) + "&static=true&page=1&offset=0&ignoreIncident=false&contentType=departure";
+
+  const kachel = (s, ziel) => {
+    const a = document.createElement("a");
+    a.className = "btn oebb";
+    a.href = url(s.eva);
+    a.innerHTML = '<span class="name"></span><span class="meta"><span class="m"></span> <span class="tag">ÖBB</span></span>';
+    a.querySelector(".name").textContent = s.name;
+    a.querySelector(".m").textContent = art === "arrival" ? "Ankunft" : "Abfahrt";
+    if (s.eva && !FIX.some(f => f.eva === s.eva)) a.addEventListener("click", () => merke(s));
+    ziel.appendChild(a);
+  };
+
+  const ladeGesucht = () => { try { return JSON.parse(localStorage.getItem("am-gesucht")) || []; } catch (e) { return []; } };
+  const merke = s => {
+    try { localStorage.setItem("am-gesucht", JSON.stringify([{ name: s.name, eva: s.eva }, ...ladeGesucht().filter(x => x.eva !== s.eva)].slice(0, 6))); } catch (e) {}
+  };
+  const zeigeKacheln = () => {
+    const fix = document.getElementById("fix"), zul = document.getElementById("zuletzt");
+    fix.innerHTML = ""; zul.innerHTML = "";
+    FIX.forEach(s => kachel(s, fix));
+    const l = ladeGesucht().filter(s => !FIX.some(f => f.eva === s.eva));
+    document.getElementById("zuletztH").hidden = !l.length;
+    l.forEach(s => kachel(s, zul));
+  };
+  zeigeKacheln();
+
+  // Suche: Name → EVA über den Worker (ÖBB blockt CORS), dann direkt weiter zum Monitor
+  const such = document.getElementById("such"), status = document.getElementById("status"), treffer = document.getElementById("treffer");
+  const setStatus = (t, err) => { status.textContent = t || ""; status.classList.toggle("err", !!err); };
+  let nr = 0, timer = null;
+  const suche = async q => {
+    const n = ++nr;
+    treffer.innerHTML = "";
+    if (q.trim().length < 2) { setStatus(""); return; }
+    setStatus("Suche …");
+    try {
+      const r = await fetch(API + "/wagenstand/stations?q=" + encodeURIComponent(q.trim()));
+      const j = await r.json();
+      if (n !== nr) return;
+      if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
+      if (!j.length) { setStatus("Kein Bahnhof gefunden."); return; }
+      setStatus("");
+      j.forEach(s => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.innerHTML = '<span class="n"></span><span class="eva"></span>';
+        b.querySelector(".n").textContent = s.name;
+        b.querySelector(".eva").textContent = "EVA " + s.eva;
+        b.onclick = () => { merke(s); location.href = url(s.eva); };
+        treffer.appendChild(b);
+      });
+    } catch (e) {
+      if (n === nr) setStatus("Suche fehlgeschlagen: " + e.message, true);
+    }
+  };
+  such.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => suche(such.value), 250); });
+  such.addEventListener("keydown", e => { if (e.key === "Enter") { clearTimeout(timer); suche(such.value); such.blur(); } });
+</script>
+</body>
+</html>

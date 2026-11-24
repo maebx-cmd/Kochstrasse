@@ -41,6 +41,8 @@
   tbody tr:nth-child(even) td { background:var(--navy); }
   .zeit, .erw { font-variant-numeric:tabular-nums; }
   .erw { color:var(--gelb); }
+  .blink { animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { visibility:hidden; } }
   .zug { overflow:visible; }
   .badge { display:inline-block; min-width:30px; padding:1px 4px; text-align:center; font-weight:700; font-size:13px;
            background:var(--weiss); color:#e30613; vertical-align:middle; line-height:1.25; }
@@ -143,6 +145,7 @@ async function laden() {
       const ist = alsZeit(s.time), plan = planVon(s);
       return { linie: s.route || "", ziel: s.direction || "", via: s.via || "", steig: s.plabel || "",
                echtzeit: s.stat === "PREDICTED" || s.stat === "ARRIVING",
+               ankunft: s.stat === "ARRIVING",
                min: (String(s.time || "").match(/^(\d+)\s*min/i) || [])[1], ist, plan };
     });
     if (steig && steig !== "ALLE") rows = rows.filter(a => a.steig.toUpperCase() === steig);
@@ -153,7 +156,10 @@ async function laden() {
       // Wie bei der ÖBB: links die Fahrplanzeit, gelb daneben die erwartete Zeit, wenn sie abweicht
       const soll = a.plan || a.ist;
       // Liefert die IVB Minuten ("4 min"), stehen sie gelb in "Erwartet" – wie am IVB-Screen
-      const erw = a.min != null ? (a.min === "0" ? "jetzt" : a.min + " min")
+      // ARRIVING (Bus fährt ein): "0 min" blinkt
+      const blink = a.ankunft || a.min === "0";
+      const erw = blink ? '<span class="blink">0 min</span>'
+                : a.min != null ? a.min + " min"
                 : (a.plan && a.ist && Math.abs(a.ist - a.plan) >= 60000 ? hhmm(a.ist) : "");
       // Vias wie bei der ÖBB: zwei Zeilen, jede mit "~" und abgeschnitten
       const vias = a.via ? a.via.split(/\s*[,;\/]\s*|\s+-\s+/).filter(Boolean) : [];

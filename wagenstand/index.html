@@ -31,7 +31,7 @@
 <div class="grid">
   <a class="btn db" href="https://db.info/muenchen-hbf/abfahrt">
     <span class="name">München Hbf</span>
-    <span class="meta">Zug antippen → Wagenreihung <span class="tag">DB</span></span>
+    <span class="meta">Zug antippen → Wagenreihung <img class="tag db" src="../db-logo-weiss.png" alt="DB"></span>
   </a>
 </div>
 
@@ -107,7 +107,7 @@ Angezeigt werden nur Fernverkehrszüge mit Wagenreihung – ist das Bild leer, h
   const kachel = (bhf, ziel, meta) => {
     const b = document.createElement("button");
     b.className = "btn";
-    b.innerHTML = '<span class="name"></span><span class="meta"><span class="m"></span> <span class="tag">ÖBB</span></span>';
+    b.innerHTML = '<span class="name"></span><span class="meta"><span class="m"></span> <img class="tag oebb" src="../oebb-logo-weiss.png" alt="ÖBB"></span>';
     b.querySelector(".name").textContent = bhf.name;
     b.querySelector(".m").textContent = meta || "Wagenreihung";
     b.onclick = () => oeffne(bhf);

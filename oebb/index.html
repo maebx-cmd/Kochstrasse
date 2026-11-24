@@ -64,7 +64,7 @@ mit Gleis und Gleisänderungen, wie am Bahnhof.</p>
     const a = document.createElement("a");
     a.className = "btn oebb";
     a.href = url(s.eva);
-    a.innerHTML = '<span class="name"></span><span class="meta"><span class="m"></span> <span class="tag">ÖBB</span></span>';
+    a.innerHTML = '<span class="name"></span><span class="meta"><span class="m"></span> <img class="tag oebb" src="../oebb-logo-weiss.png" alt="ÖBB"></span>';
     a.querySelector(".name").textContent = s.name;
     a.querySelector(".m").textContent = art === "arrival" ? "Ankunft" : "Abfahrt";
     if (s.eva && !FIX.some(f => f.eva === s.eva)) a.addEventListener("click", () => merke(s));

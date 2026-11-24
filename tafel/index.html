@@ -23,6 +23,17 @@
   .leiste button { font:inherit; font-size:14px; padding:7px 11px; border:0; background:var(--tief); color:var(--fg); white-space:nowrap; cursor:pointer; }
   .leiste button.on { background:var(--gelb); color:var(--bg); font-weight:700; }
 
+  /* Ankunft: grün wie die ÖBB-Ankunftsmonitore */
+  body.an { --bg:#1a3e22; --card:#295933; --tief:#1a3e22; --card-hi:#357040; }
+  html:has(body.an) { background:#1a3e22; }
+
+  /* Bahnhof-Schnellwahl */
+  .bahnhoefe { display:flex; gap:4px; overflow-x:auto; margin:0 12px 6px; padding-bottom:2px; scrollbar-width:none; }
+  .bahnhoefe::-webkit-scrollbar { display:none; }
+  .bahnhoefe button { font:inherit; font-size:14px; padding:7px 11px; border:0; background:var(--card); color:var(--fg); white-space:nowrap; cursor:pointer; }
+  .bahnhoefe button.on { background:#fff; color:var(--bg); font-weight:700; }
+  .bahnhoefe button.andere { background:var(--tief); border:1px solid var(--fg); }
+
   /* Tafel */
   .kopfzeile { display:grid; grid-template-columns:76px 1fr 44px; gap:8px; padding:6px 12px; font-size:11px; line-height:1.25; }
   .kopfzeile i { display:block; }
@@ -122,6 +133,8 @@
   <button class="wechsel" id="wechsel" type="button">Zu Ankünften</button>
 </div>
 
+<div class="bahnhoefe" id="bahnhoefe"></div>
+
 <div class="leiste" id="filter">
   <button type="button" data-f="alle" class="on">Alle Züge</button>
   <button type="button" data-f="fern">Fernverkehr</button>
@@ -130,7 +143,7 @@
   <button type="button" data-f="bus">Bus &amp; Tram</button>
 </div>
 
-<div class="kopfzeile"><div>Zeit<i>time</i></div><div>Zug · Nach<i>train · to</i></div><div class="r">Gleis<i>platform</i></div></div>
+<div class="kopfzeile"><div>Zeit<i>time</i></div><div id="spalte">Zug · Nach<i>train · to</i></div><div class="r">Gleis<i>platform</i></div></div>
 <div id="liste"><div class="lade">Lade Abfahrten …</div></div>
 <div class="hinweis" id="fehler" hidden></div>
 <div class="stand"><a href="../start.html">‹ Start</a><span id="stand"></span></div>
@@ -173,10 +186,36 @@ const zugname = d => (d.line?.name || "").replace(/\s*\(Zug-Nr\.[^)]*\)/, "");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const hhmm = d => d ? new Date(d).toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit"}) : "";
 const p = new URLSearchParams(location.search);
-let eva = p.get("eva") || "8100108";
+const zuletzt = (() => { try { return JSON.parse(localStorage.getItem("tafel-bhf")) || null; } catch (e) { return null; } })();
+let eva = p.get("eva") || (zuletzt && zuletzt.eva) || "8100108";
 let art = p.get("art") === "an" ? "an" : "ab";
 let filter = "alle";
-let stationName = p.get("name") || "";
+let stationName = p.get("name") || (!p.get("eva") && zuletzt ? zuletzt.name : "") || "";
+const FAVORITEN = [
+  {eva:"8100108", name:"Innsbruck Hbf"}, {eva:"8100061", name:"Ötztal"}, {eva:"8100062", name:"Imst-Pitztal"},
+  {eva:"8101448", name:"Roppen"}, {eva:"8100063", name:"Landeck-Zams"},
+];
+function gesucht() { try { return JSON.parse(localStorage.getItem("tafel-gesucht")) || []; } catch (e) { return []; } }
+function bahnhofWechseln(s) {
+  eva = s.eva; stationName = s.name;
+  try {
+    localStorage.setItem("tafel-bhf", JSON.stringify({eva, name:stationName}));
+    if (!FAVORITEN.some(f => f.eva === eva))
+      localStorage.setItem("tafel-gesucht", JSON.stringify([{eva, name:stationName}, ...gesucht().filter(x => x.eva !== eva)].slice(0, 4)));
+  } catch (e) {}
+  urlSetzen(); kopf(); $("liste").innerHTML = '<div class="lade">Lade …</div>'; laden();
+}
+function zeigeBahnhoefe() {
+  const alle = [...FAVORITEN, ...gesucht().filter(g => !FAVORITEN.some(f => f.eva === g.eva))];
+  if (!alle.some(b => b.eva === String(eva))) alle.unshift({eva:String(eva), name:stationName || ("Bahnhof " + eva)});
+  $("bahnhoefe").innerHTML = alle.map((b, i) => `<button type="button" data-i="${i}"${b.eva === String(eva) ? ' class="on"' : ""}>${esc(b.name)}</button>`).join("")
+    + '<button type="button" class="andere" data-i="such">Andere … 🔍</button>';
+  $("bahnhoefe").onclick = e => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.i === "such") return $("stationBtn").click();
+    bahnhofWechseln(alle[+b.dataset.i]);
+  };
+}
 let liste = [];
 
 setInterval(() => $("uhr").textContent = new Date().toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit", second:"2-digit"}), 1000);
@@ -203,6 +242,10 @@ function kopf() {
   $("titel").innerHTML = art === "an" ? 'Ankunft<span class="en">Arrival</span>' : 'Abfahrt<span class="en">Departure</span>';
   $("wechsel").textContent = art === "an" ? "Zu Abfahrten" : "Zu Ankünften";
   $("stationBtn").textContent = stationName || "Bahnhof " + eva;
+  document.body.classList.toggle("an", art === "an");
+  $("spalte").innerHTML = art === "an" ? "Zug · Von<i>train · from</i>" : "Zug · Nach<i>train · to</i>";
+  document.querySelector('meta[name="theme-color"]').content = art === "an" ? "#1a3e22" : "#000084";
+  zeigeBahnhoefe();
   document.title = (art === "an" ? "Ankunft " : "Abfahrt ") + (stationName || "");
   $("zurueckText").textContent = (art === "an" ? "Ankunft " : "Abfahrt ") + (stationName || "");
 }
@@ -236,7 +279,7 @@ function zeichnen() {
     return `<button class="zeile" type="button" data-i="${liste.indexOf(d)}">
       <div class="zeit"><span class="soll${spaet ? " weg" : ""}">${hhmm(d.plannedWhen || d.when)}</span>${spaet ? `<span class="ist">${hhmm(d.when)}</span>` : ""}</div>
       <div style="min-width:0"><span class="zug">${esc(zugname(d))}</span>
-        <div class="ziel${d.cancelled ? " aus" : ""}">${art === "an" ? "von " : ""}${esc(ziel)}</div>
+        <div class="ziel${d.cancelled ? " aus" : ""}">${esc(ziel)}</div>
         ${d.cancelled ? '<div class="info">Fällt aus</div>' : (d.delay >= 300 ? `<div class="info">+${Math.round(d.delay / 60)} min</div>` : "")}</div>
       <div class="gleis${gl.neu ? " neu" : ""}">${gl.html}</div>
     </button>`;
@@ -453,7 +496,7 @@ async function suche(q) {
       const b = document.createElement("button"); b.type = "button";
       b.innerHTML = '<span class="n"></span><span class="eva"></span>';
       b.querySelector(".n").textContent = s.name; b.querySelector(".eva").textContent = "EVA " + s.eva;
-      b.onclick = () => { eva = s.eva; stationName = s.name; urlSetzen(); kopf(); $("suche").hidden = true; $("liste").innerHTML = '<div class="lade">Lade …</div>'; laden(); };
+      b.onclick = () => { $("suche").hidden = true; bahnhofWechseln({eva:s.eva, name:s.name}); };
       $("treffer").appendChild(b);
     });
   } catch (e) { if (n === sNr) $("sStatus").textContent = "Suche fehlgeschlagen: " + e.message; }

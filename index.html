@@ -44,9 +44,14 @@
   .zug { overflow:visible; }
   .badge { display:inline-block; min-width:30px; padding:1px 4px; text-align:center; font-weight:700; font-size:13px;
            background:var(--weiss); color:#e30613; vertical-align:middle; line-height:1.25; }
-  .nach { text-overflow:ellipsis; padding-left:4px; }
+  .nach { padding-left:4px; }
+  /* LED-Lauftext wie im Original: was nicht passt, läuft von rechts nach links durch */
+  .lz { display:block; overflow:hidden; white-space:nowrap; }
+  .lz > .t { display:inline-block; }
+  .lz.lauf > .t { animation:lauf var(--d, 8s) linear infinite; will-change:transform; }
+  @keyframes lauf { from { transform:translateX(var(--w, 100px)); } to { transform:translateX(-100%); } }
   .via { font-size:20px; line-height:1.1; padding-left:4px; }
-  .via div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
   .steig { text-align:right; padding-right:10px; font-size:14.5px; }
   .leer td { text-align:center; height:60px; font-size:15px; }
 
@@ -143,21 +148,24 @@ async function laden() {
     if (linien.length) rows = rows.filter(a => linien.includes(a.linie.toUpperCase()));
     rows = rows.slice(0, n);
 
-    document.getElementById("liste").innerHTML = rows.map(a => {
+    const html = rows.map(a => {
       // Wie bei der ÖBB: links die Fahrplanzeit, gelb daneben die erwartete Zeit, wenn sie abweicht
       const soll = a.plan || a.ist;
       const erw = a.plan && a.ist && Math.abs(a.ist - a.plan) >= 60000 ? hhmm(a.ist) : "";
       // Vias wie bei der ÖBB: zwei Zeilen, jede mit "~" und abgeschnitten
       const vias = a.via ? a.via.split(/\s*[,;\/]\s*|\s+-\s+/).filter(Boolean) : [];
-      const via = vias.slice(0, 2).map((v, i) => `<div>${esc(v)}${i < vias.length - 1 ? "~" : ""}</div>`).join("");
+      const via = vias.slice(0, 2).map((v, i) => `<span class="lz"><span class="t">${esc(v)}${i < vias.length - 1 ? "~" : ""}</span></span>`).join("");
       return `<tr>
         <td class="zeit">${soll ? hhmm(soll) : ""}</td>
         <td class="erw">${erw}</td>
         <td class="zug"><span class="badge">${esc(a.linie)}</span></td>
-        <td class="nach">${esc(a.ziel)}</td>
+        <td class="nach"><span class="lz"><span class="t">${esc(a.ziel)}</span></span></td>
         <td class="via">${via}</td>
         <td class="steig">${esc(a.steig)}</td></tr>`;
     }).join("") || `<tr class="leer"><td colspan="6">Keine Abfahrten</td></tr>`;
+    // Nur neu zeichnen, wenn sich etwas geändert hat – sonst springen die Lauftexte bei jedem Update zurück
+    const liste = document.getElementById("liste");
+    if (liste.dataset.html !== html) { liste.innerHTML = html; liste.dataset.html = html; lauftext(); }
 
     document.getElementById("fehler").hidden = true;
     document.getElementById("stand").textContent = "Stand " +
@@ -168,6 +176,22 @@ async function laden() {
     f.hidden = false;
   }
 }
+// Lauftext nur dort, wo der Text nicht in die Zelle passt; Tempo ca. 45 px/s wie eine LED-Anzeige
+function lauftext() {
+  document.querySelectorAll(".lz").forEach(box => {
+    const t = box.firstElementChild;
+    box.classList.remove("lauf");
+    const w = box.clientWidth, tw = t.scrollWidth;
+    if (tw > w + 1) {
+      box.style.setProperty("--w", w + "px");
+      box.style.setProperty("--d", ((w + tw) / 45).toFixed(1) + "s");
+      box.classList.add("lauf");
+    }
+  });
+}
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(lauftext, 200); });
+if (document.fonts) document.fonts.ready.then(lauftext);
+
 laden(); setInterval(laden, 30000);
 </script>
 </body></html>

@@ -168,6 +168,7 @@ const gleisHtml = (ist, plan) => {
   const neu = ist && plan && a.nr !== b.nr;
   return {neu, html:`${neu ? `<span class="alt">${esc(b.nr)}</span>` : ""}${esc(a.nr)}${a.sek ? `<small>${esc(a.sek)}</small>` : ""}`};
 };
+const ohneBf = n => String(n || "").replace(/\s+(Bahnhof|Bahnhst\.?)$/, "");
 const zugname = d => (d.line?.name || "").replace(/\s*\(Zug-Nr\.[^)]*\)/, "");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const hhmm = d => d ? new Date(d).toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit"}) : "";
@@ -231,7 +232,7 @@ function zeichnen() {
   $("liste").innerHTML = rows.map((d, i) => {
     const spaet = verspaetet(d.plannedWhen, d.when);
     const gl = gleisHtml(d.platform, d.plannedPlatform);
-    const ziel = art === "an" ? (d.provenance || d.origin?.name || "") : (d.direction || "");
+    const ziel = ohneBf(art === "an" ? (d.provenance || d.origin?.name || "") : (d.direction || ""));
     return `<button class="zeile" type="button" data-i="${liste.indexOf(d)}">
       <div class="zeit"><span class="soll${spaet ? " weg" : ""}">${hhmm(d.plannedWhen || d.when)}</span>${spaet ? `<span class="ist">${hhmm(d.when)}</span>` : ""}</div>
       <div style="min-width:0"><span class="zug">${esc(zugname(d))}</span>
@@ -265,7 +266,7 @@ $("zurueck").onclick = () => { $("fahrt").hidden = true; fahrt = null; document.
 
 function oeffneFahrt(dep, tab) {
   fahrt = {dep, trip: null, wr: undefined};
-  const ziel = art === "an" ? (dep.provenance || "") : dep.direction;
+  const ziel = ohneBf(art === "an" ? (dep.provenance || "") : dep.direction);
   $("fkopf").innerHTML = `<span class="zug">${esc(zugname(dep))}</span><div class="nach">${art === "an" ? "von" : "nach"}</div><div class="ziel">${esc(ziel)}</div>`;
   $("fInhalt").innerHTML = '<div class="lade">Lade …</div>';
   $("fahrt").hidden = false; $("fahrt").scrollTop = 0; document.body.style.overflow = "hidden";

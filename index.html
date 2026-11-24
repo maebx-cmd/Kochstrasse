@@ -25,8 +25,8 @@
   .zeile .en { color:var(--gelb); font-style:italic; width:82px; }
   .zeile .uhr { font-variant-numeric:tabular-nums; }
   .logo { position:absolute; right:10px; top:6px; text-align:right; }
-  .logo .marke { font-size:44px; font-weight:900; letter-spacing:-.01em; line-height:.9; font-family:"Arial Black", Arial, sans-serif; }
-  .logo .sub { font-size:13px; font-weight:700; letter-spacing:.14em; margin-top:10px; text-transform:uppercase;
+  .logo .marke { display:block; height:62px; width:auto; margin-left:auto; }
+  .logo .sub { font-size:13px; font-weight:700; letter-spacing:.14em; margin-top:6px; text-transform:uppercase;
                max-width:60vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
   /* Tabelle */
@@ -63,7 +63,7 @@
   /* Breitere Bildschirme: alles etwas größer, wie auf dem Monitor */
   @media (min-width:700px) {
     .kopf { height:150px; } .zeile { font-size:30px; } .zeile .de, .zeile .en { width:150px; } .pikto { width:26px; height:26px; }
-    .logo .marke { font-size:72px; } .logo .sub { font-size:20px; }
+    .logo .marke { height:100px; } .logo .sub { font-size:20px; }
     th { font-size:15px; } td, .steig { font-size:22px; height:64px; } .via { font-size:28px; } .badge { font-size:19px; min-width:44px; }
   }
 </style></head>
@@ -76,7 +76,7 @@
   <div class="de">Abfahrt</div>
   <div class="en">Departure</div>
   <div class="uhr" id="uhr"></div></div>
-  <div class="logo"><div class="marke">IVB</div><div class="sub" id="station"></div></div>
+  <div class="logo"><img class="marke" src="ivb-logo-weiss.png" alt="IVB"><div class="sub" id="station"></div></div>
 </div>
 
 <table>

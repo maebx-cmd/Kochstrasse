@@ -142,7 +142,8 @@ async function laden() {
       const s = x.smartinfo || x;
       const ist = alsZeit(s.time), plan = planVon(s);
       return { linie: s.route || "", ziel: s.direction || "", via: s.via || "", steig: s.plabel || "",
-               echtzeit: s.stat === "PREDICTED", ist, plan };
+               echtzeit: s.stat === "PREDICTED" || s.stat === "ARRIVING",
+               min: (String(s.time || "").match(/^(\d+)\s*min/i) || [])[1], ist, plan };
     });
     if (steig && steig !== "ALLE") rows = rows.filter(a => a.steig.toUpperCase() === steig);
     if (linien.length) rows = rows.filter(a => linien.includes(a.linie.toUpperCase()));
@@ -151,7 +152,9 @@ async function laden() {
     const html = rows.map(a => {
       // Wie bei der ÖBB: links die Fahrplanzeit, gelb daneben die erwartete Zeit, wenn sie abweicht
       const soll = a.plan || a.ist;
-      const erw = a.plan && a.ist && Math.abs(a.ist - a.plan) >= 60000 ? hhmm(a.ist) : "";
+      // Liefert die IVB Minuten ("4 min"), stehen sie gelb in "Erwartet" – wie am IVB-Screen
+      const erw = a.min != null ? (a.min === "0" ? "jetzt" : a.min + " min")
+                : (a.plan && a.ist && Math.abs(a.ist - a.plan) >= 60000 ? hhmm(a.ist) : "");
       // Vias wie bei der ÖBB: zwei Zeilen, jede mit "~" und abgeschnitten
       const vias = a.via ? a.via.split(/\s*[,;\/]\s*|\s+-\s+/).filter(Boolean) : [];
       const via = vias.slice(0, 2).map((v, i) => `<span class="lz"><span class="t">${esc(v)}${i < vias.length - 1 ? "~" : ""}</span></span>`).join("");

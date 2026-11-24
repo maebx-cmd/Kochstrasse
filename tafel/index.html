@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000084">
+<link rel="apple-touch-icon" href="../icon.png">
+<link rel="stylesheet" href="../ui.css">
+<title>ÖBB Abfahrt</title>
+<style>
+  /* ÖBB-Abfahrtstafel mit Fahrtverlauf und Wagenreihung – Aufbau wie db.info, Optik wie die ÖBB-Infra-Anzeigen */
+  body { padding-left:calc(env(safe-area-inset-left) + 0px); padding-right:calc(env(safe-area-inset-right) + 0px); }
+  header, .leiste, .station, .hinweis, .stand { margin-left:12px; margin-right:12px; }
+  .station { display:flex; align-items:center; gap:10px; margin-top:2px; margin-bottom:10px; }
+  .station button { font:inherit; font-size:24px; background:none; border:0; color:var(--fg); cursor:pointer; text-align:left; padding:0; }
+  .station button::after { content:" ▾"; font-size:14px; color:var(--dim); }
+  .station .wechsel { margin-left:auto; font-size:12px; background:var(--card); color:var(--fg); border:0; padding:6px 8px; cursor:pointer; font-family:inherit; }
+  .station .wechsel::after { content:none; }
+  .leiste { display:flex; gap:4px; overflow-x:auto; padding-bottom:8px; scrollbar-width:none; }
+  .leiste::-webkit-scrollbar { display:none; }
+  .leiste button { font:inherit; font-size:14px; padding:7px 11px; border:0; background:var(--tief); color:var(--fg); white-space:nowrap; cursor:pointer; }
+  .leiste button.on { background:var(--gelb); color:var(--bg); font-weight:700; }
+
+  /* Tafel */
+  .kopfzeile { display:grid; grid-template-columns:76px 1fr 44px; gap:8px; padding:6px 12px; font-size:11px; line-height:1.25; }
+  .kopfzeile i { display:block; }
+  .kopfzeile .r { text-align:right; }
+  .zeile { display:grid; grid-template-columns:76px 1fr 44px; gap:8px; align-items:center; padding:9px 12px; background:var(--card);
+           color:var(--fg); text-decoration:none; cursor:pointer; border:0; width:100%; font:inherit; text-align:left; }
+  .zeile:nth-child(even) { background:var(--tief); }
+  .zeile:active { background:var(--card-hi); }
+  .zeit { font-size:19px; font-variant-numeric:tabular-nums; line-height:1.1; }
+  .zeit .soll.weg { text-decoration:line-through; opacity:.7; font-size:13px; display:block; }
+  .zeit .ist { color:var(--gelb); display:block; }
+  .zug { display:inline-block; background:#fff; color:#e2002a; font-weight:700; font-size:12px; padding:1px 5px; margin-bottom:4px; white-space:nowrap; }
+  .ziel { font-size:18px; line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ziel.aus { text-decoration:line-through; opacity:.75; }
+  .info { font-size:12px; color:var(--gelb); margin-top:3px; }
+  .gleis { text-align:right; font-size:21px; line-height:1.05; }
+  .gleis .alt { display:block; font-size:12px; text-decoration:line-through; opacity:.7; }
+  .gleis.neu { color:var(--gelb); }
+  .leer, .lade { padding:24px 12px; text-align:center; color:var(--dim); }
+  .hinweis { color:var(--gelb); font-size:14px; padding:10px 0; }
+  .stand { display:flex; justify-content:space-between; font-size:11px; color:var(--dim); padding:10px 0 4px; }
+  .stand a { color:inherit; }
+
+  /* Detailansicht (Fahrt) */
+  #fahrt { position:fixed; inset:0; background:var(--bg); overflow-y:auto; z-index:5;
+           padding:calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 90px); }
+  #fahrt .zurueck { color:var(--fg); text-decoration:none; font-size:15px; background:none; border:0; font-family:inherit; cursor:pointer; padding:0; }
+  .fkopf { margin:14px 0 10px; }
+  .fkopf .zug { font-size:14px; }
+  .fkopf .nach { font-size:13px; color:var(--dim); }
+  .fkopf .ziel { font-size:24px; white-space:normal; }
+  .tabs { position:fixed; left:0; right:0; bottom:0; display:flex; gap:4px; padding:10px 12px calc(env(safe-area-inset-bottom) + 10px);
+          background:var(--tief); z-index:6; }
+  .tabs button { flex:1; font:inherit; font-size:16px; padding:11px; border:0; background:var(--card); color:var(--fg); cursor:pointer; }
+  .tabs button.on { background:var(--gelb); color:var(--bg); font-weight:700; }
+
+  /* Fahrtverlauf: Zeitstrahl */
+  .datum { font-size:13px; color:var(--dim); padding-bottom:8px; border-bottom:1px solid var(--card); margin-bottom:6px; }
+  .halt { display:grid; grid-template-columns:58px 22px 1fr 40px; align-items:center; min-height:52px; position:relative; }
+  .halt .t { text-align:right; font-variant-numeric:tabular-nums; line-height:1.15; }
+  .halt .t .soll { font-size:12px; opacity:.75; display:block; }
+  .halt .t .soll.weg { text-decoration:line-through; }
+  .halt .t .ist { display:inline-block; background:#fff; color:var(--bg); padding:1px 4px; font-size:15px; }
+  .halt .t .ist.spaet { background:var(--gelb); }
+  .halt .strich { position:relative; height:100%; }
+  .halt .strich::before { content:""; position:absolute; left:50%; top:0; bottom:0; width:4px; margin-left:-2px; background:var(--card-hi); }
+  .halt:first-of-type .strich::before { top:50%; }
+  .halt:last-of-type .strich::before { bottom:50%; }
+  .halt .strich::after { content:""; position:absolute; left:50%; top:50%; width:14px; height:6px; margin:-3px 0 0 -7px; background:#fff; border:1px solid var(--bg); }
+  .halt.vorbei { opacity:.5; }
+  .halt.hier .n { color:var(--gelb); font-weight:700; }
+  .halt.aus .n { text-decoration:line-through; }
+  .halt .n { padding-left:6px; font-size:16px; line-height:1.15; }
+  .halt .n small { display:block; font-size:12px; color:var(--gelb); }
+  .halt .g { text-align:right; font-size:15px; }
+  .halt .g.neu { color:var(--gelb); }
+  .zugpos { font-size:13px; color:var(--dim); margin:2px 0 8px 80px; }
+
+  /* Wagenreihung */
+  .wr-detail { min-height:150px; display:flex; flex-direction:column; justify-content:flex-end; padding-bottom:14px; }
+  .wr-detail .ikons { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; font-size:14px; }
+  .wr-detail .ikons span::before { content:""; display:inline-block; width:18px; height:18px; margin-right:8px; vertical-align:-4px;
+                                   border:1.5px solid #fff; text-align:center; }
+  .wr-detail .nr { font-size:34px; line-height:1; margin-right:12px; }
+  .wr-detail .kl { display:inline-block; background:var(--gelb); color:var(--bg); padding:1px 5px; font-weight:700; }
+  .wr-detail .wo { font-size:14px; margin-top:4px; }
+  .wr-linie { height:3px; background:var(--gelb); margin:0 0 14px; }
+  .wr { position:relative; overflow-x:auto; padding-bottom:6px; }
+  .wr-in { position:relative; height:76px; }
+  .sek { position:absolute; top:0; height:16px; text-align:center; font-size:12px; border-left:1px solid var(--dim); color:var(--dim); }
+  .sek:first-child { border-left:0; }
+  .wg { position:absolute; top:22px; height:30px; border:1.5px solid #fff; background:var(--bg); color:#fff; font:inherit;
+        font-size:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; border-radius:3px; }
+  .wg.lok { border-radius:10px 3px 3px 10px; background:#fff; color:var(--bg); }
+  .wg.lok.r { border-radius:3px 10px 10px 3px; }
+  .wg.k1 { box-shadow:inset 0 -4px 0 var(--gelb); }
+  .wg.zu { opacity:.4; }
+  .wg.sel { outline:2px solid var(--gelb); outline-offset:2px; }
+  .richtung { position:absolute; top:30px; font-size:14px; color:var(--dim); }
+  .wr-ziel { font-size:12px; color:var(--dim); margin-top:6px; }
+  .wr-leer { color:var(--dim); padding:30px 0; line-height:1.5; }
+
+  /* Bahnhofsuche */
+  #suche { position:fixed; inset:0; background:var(--bg); z-index:10; padding:calc(env(safe-area-inset-top) + 10px) 12px 20px; overflow-y:auto; }
+</style>
+</head>
+<body>
+<header>
+  <a href="../start.html" aria-label="Startseite"><svg class="pikto" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" fill="#fff"/><path d="M7 4h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 3v4h10V7zm1 7.2a1.2 1.2 0 1 0 0 .1zm8 0a1.2 1.2 0 1 0 0 .1zM8 18l-2 3h2l1.3-2h5.4l1.3 2h2l-2-3z" fill="#000084"/></svg></a>
+  <h1 id="titel">Abfahrt<span class="en">Departure</span></h1>
+  <div id="uhr"></div>
+</header>
+
+<div class="station">
+  <button id="stationBtn" type="button">…</button>
+  <button class="wechsel" id="wechsel" type="button">Zu Ankünften</button>
+</div>
+
+<div class="leiste" id="filter">
+  <button type="button" data-f="alle" class="on">Alle Züge</button>
+  <button type="button" data-f="fern">Fernverkehr</button>
+  <button type="button" data-f="regio">Regio</button>
+  <button type="button" data-f="sbahn">S-Bahn</button>
+  <button type="button" data-f="bus">Bus</button>
+</div>
+
+<div class="kopfzeile"><div>Zeit<i>time</i></div><div>Zug · Nach<i>train · to</i></div><div class="r">Gleis<i>platform</i></div></div>
+<div id="liste"><div class="lade">Lade Abfahrten …</div></div>
+<div class="hinweis" id="fehler" hidden></div>
+<div class="stand"><a href="../start.html">‹ Start</a><span id="stand"></span></div>
+
+<!-- Fahrt: Fahrtverlauf + Wagenreihung -->
+<div id="fahrt" hidden>
+  <button class="zurueck" id="zurueck" type="button">← <span id="zurueckText">Abfahrt</span></button>
+  <div class="fkopf" id="fkopf"></div>
+  <div id="fInhalt"></div>
+  <div class="tabs">
+    <button type="button" data-tab="wr">Wagenreihung</button>
+    <button type="button" data-tab="fv">Fahrtverlauf</button>
+  </div>
+</div>
+
+<!-- Bahnhofsuche -->
+<div id="suche" hidden>
+  <header><h1>Bahnhof<span class="en">station</span></h1><a class="back" href="#" id="sucheZu">Schließen</a></header>
+  <div class="suche"><input id="such" type="search" placeholder="Bahnhof, z. B. Kufstein …" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+    <div id="sStatus" class="status"></div><div id="treffer" class="treffer"></div></div>
+</div>
+
+<script>
+// ---------- Grundlagen ----------
+const API = (() => {
+  try { const r = JSON.parse(localStorage.getItem("rundreise.v1") || "null"); if (r && r.apibase) return r.apibase.replace(/\/+$/, ""); } catch (e) {}
+  return "https://kochstrasse.ma-eberharter-94.workers.dev/api";
+})();
+const WS = "wss://meine.oebb.at/abfahrtankunft/webdisplay/web_client/ws/";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const hhmm = d => d ? new Date(d).toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit"}) : "";
+const p = new URLSearchParams(location.search);
+let eva = p.get("eva") || "8100108";
+let art = p.get("art") === "an" ? "an" : "ab";
+let filter = "alle";
+let stationName = p.get("name") || "";
+let liste = [];
+
+setInterval(() => $("uhr").textContent = new Date().toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit", second:"2-digit"}), 1000);
+$("uhr").textContent = new Date().toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+
+const PRODUKTE = {
+  fern:  ["nationalExpress", "national", "interregional"],
+  regio: ["regional"],
+  sbahn: ["suburban"],
+  bus:   ["bus", "onCall"],
+};
+const verspaetet = (plan, ist) => plan && ist && Math.abs(new Date(ist) - new Date(plan)) >= 60000;
+
+function urlSetzen() {
+  const q = new URLSearchParams({eva});
+  if (art === "an") q.set("art", "an");
+  if (stationName) q.set("name", stationName);
+  history.replaceState(null, "", "?" + q + location.hash);
+}
+
+// ---------- Tafel ----------
+function kopf() {
+  $("titel").innerHTML = art === "an" ? 'Ankunft<span class="en">Arrival</span>' : 'Abfahrt<span class="en">Departure</span>';
+  $("wechsel").textContent = art === "an" ? "Zu Abfahrten" : "Zu Ankünften";
+  $("stationBtn").textContent = stationName || "Bahnhof " + eva;
+  document.title = (art === "an" ? "Ankunft " : "Abfahrt ") + (stationName || "");
+  $("zurueckText").textContent = (art === "an" ? "Ankunft " : "Abfahrt ") + (stationName || "");
+}
+
+async function laden() {
+  try {
+    const r = await fetch(`${API}/stops/${encodeURIComponent(eva)}/${art === "an" ? "arrivals" : "departures"}?duration=120`);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
+    liste = (art === "an" ? j.arrivals : j.departures) || [];
+    if (!stationName && liste[0] && liste[0].stop) { stationName = liste[0].stop.name; urlSetzen(); }
+    kopf(); zeichnen();
+    $("fehler").hidden = true;
+    $("stand").textContent = "Stand " + new Date().toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+  } catch (e) {
+    $("fehler").textContent = "Daten konnten nicht geladen werden (" + e.message + ").";
+    $("fehler").hidden = false;
+  }
+}
+
+function zeichnen() {
+  const f = PRODUKTE[filter];
+  const rows = liste.filter(d => !f || f.includes(d.line && d.line.product));
+  $("liste").innerHTML = rows.map((d, i) => {
+    const spaet = verspaetet(d.plannedWhen, d.when);
+    const gleisNeu = d.platform && d.plannedPlatform && d.platform !== d.plannedPlatform;
+    const ziel = art === "an" ? (d.provenance || d.origin?.name || "") : (d.direction || "");
+    return `<button class="zeile" type="button" data-i="${liste.indexOf(d)}">
+      <div class="zeit"><span class="soll${spaet ? " weg" : ""}">${hhmm(d.plannedWhen || d.when)}</span>${spaet ? `<span class="ist">${hhmm(d.when)}</span>` : ""}</div>
+      <div style="min-width:0"><span class="zug">${esc(d.line?.name || "")}</span>
+        <div class="ziel${d.cancelled ? " aus" : ""}">${art === "an" ? "von " : ""}${esc(ziel)}</div>
+        ${d.cancelled ? '<div class="info">Fällt aus</div>' : (d.delay >= 300 ? `<div class="info">+${Math.round(d.delay / 60)} min</div>` : "")}</div>
+      <div class="gleis${gleisNeu ? " neu" : ""}">${gleisNeu ? `<span class="alt">${esc(d.plannedPlatform)}</span>` : ""}${esc(d.platform || d.plannedPlatform || "")}</div>
+    </button>`;
+  }).join("") || '<div class="leer">Keine Fahrten in den nächsten 2 Stunden.</div>';
+}
+
+$("liste").addEventListener("click", e => {
+  const b = e.target.closest(".zeile"); if (!b) return;
+  oeffneFahrt(liste[+b.dataset.i], "fv");
+});
+$("filter").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  filter = b.dataset.f;
+  $("filter").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+  zeichnen();
+});
+$("wechsel").onclick = () => { art = art === "an" ? "ab" : "an"; urlSetzen(); kopf(); $("liste").innerHTML = '<div class="lade">Lade …</div>'; laden(); };
+
+// ---------- Fahrt (Fahrtverlauf + Wagenreihung) ----------
+let fahrt = null;   // {dep, trip, wr}
+function zeigeTab(tab) {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  if (tab === "fv") fahrtverlauf(); else wagenreihung();
+}
+document.querySelector(".tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) zeigeTab(b.dataset.tab); });
+$("zurueck").onclick = () => { $("fahrt").hidden = true; fahrt = null; document.body.style.overflow = ""; };
+
+function oeffneFahrt(dep, tab) {
+  fahrt = {dep, trip: null, wr: undefined};
+  const ziel = art === "an" ? (dep.provenance || "") : dep.direction;
+  $("fkopf").innerHTML = `<span class="zug">${esc(dep.line?.name)}</span><div class="nach">${art === "an" ? "von" : "nach"}</div><div class="ziel">${esc(ziel)}</div>`;
+  $("fInhalt").innerHTML = '<div class="lade">Lade …</div>';
+  $("fahrt").hidden = false; $("fahrt").scrollTop = 0; document.body.style.overflow = "hidden";
+  zeigeTab(tab);
+}
+
+async function holeTrip() {
+  if (fahrt.trip) return fahrt.trip;
+  const r = await fetch(`${API}/trips/${encodeURIComponent(fahrt.dep.tripId)}`);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
+  return (fahrt.trip = j.trip);
+}
+
+async function fahrtverlauf() {
+  const f = fahrt;
+  $("fInhalt").innerHTML = '<div class="lade">Lade Fahrtverlauf …</div>';
+  try {
+    const t = await holeTrip();
+    if (fahrt !== f || !document.querySelector('.tabs .on[data-tab="fv"]')) return;
+    const jetzt = Date.now();
+    const so = t.stopovers || [];
+    const datum = new Date(so[0]?.plannedDeparture || t.plannedDeparture).toLocaleDateString("de-AT", {weekday:"long", day:"2-digit", month:"2-digit", year:"numeric"});
+    let html = `<div class="datum">${datum}</div><div class="verlauf">`;
+    so.forEach((s, i) => {
+      const letzter = i === so.length - 1;
+      const plan = letzter ? s.plannedArrival : (s.plannedDeparture || s.plannedArrival);
+      const ist = letzter ? s.arrival : (s.departure || s.arrival);
+      const spaet = verspaetet(plan, ist);
+      const pp = s.plannedDeparturePlatform || s.plannedArrivalPlatform, pl = s.departurePlatform || s.arrivalPlatform;
+      const vorbei = ist && new Date(ist) < jetzt - 30000;
+      const hier = s.stop?.id === String(eva);
+      html += `<div class="halt${vorbei ? " vorbei" : ""}${hier ? " hier" : ""}${s.cancelled ? " aus" : ""}">
+        <div class="t">${spaet ? `<span class="soll weg">${hhmm(plan)}</span><span class="ist spaet">${hhmm(ist)}</span>` : `<span class="ist">${hhmm(plan || ist)}</span>`}</div>
+        <div class="strich"></div>
+        <div class="n">${esc(s.stop?.name)}${s.cancelled ? "<small>Halt entfällt</small>" : ""}</div>
+        <div class="g${pl && pp && pl !== pp ? " neu" : ""}">${esc(pl || pp || "")}</div></div>`;
+    });
+    $("fInhalt").innerHTML = html + "</div>";
+    const h = $("fInhalt").querySelector(".hier"); if (h) h.scrollIntoView({block:"center"});
+  } catch (e) {
+    $("fInhalt").innerHTML = `<div class="hinweis">Fahrtverlauf nicht verfügbar (${esc(e.message)}).</div>`;
+  }
+}
+
+// Wagenreihung: Live-Daten des ÖBB-Webdisplays für das Gleis, auf dem der Zug hält
+const plcCache = {};
+async function plc() {
+  if (plcCache[eva]) return plcCache[eva];
+  const r = await fetch(`${API}/wagenstand/plc/${encodeURIComponent(eva)}`);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
+  return (plcCache[eva] = j.plc);
+}
+function wsDaten(stationId, gleis) {
+  return new Promise((ok, fail) => {
+    const res = {};
+    let w;
+    try { w = new WebSocket(`${WS}?stationId=${encodeURIComponent(stationId)}&contentType=formation&track=${encodeURIComponent(gleis)}&staticLayout=true`); }
+    catch (e) { fail(e); return; }
+    const fertig = () => { try { w.close(); } catch (e) {} ok(res); };
+    const timer = setTimeout(fertig, 6000);
+    w.onerror = () => { clearTimeout(timer); fail(new Error("Verbindung zum ÖBB-Webdisplay fehlgeschlagen")); };
+    w.onmessage = m => {
+      try {
+        const j = JSON.parse(m.data);
+        if (j.method === "updateConfiguration") res.platform = j.params.platform;
+        if (j.method === "update") { res.deps = (j.params.data && (j.params.data.departures || j.params.data.arrivals)) || []; }
+        if (res.deps && res.platform) { clearTimeout(timer); fertig(); }
+      } catch (e) {}
+    };
+  });
+}
+
+const IKONS = { wlan:"WLAN", silence:"Ruhebereich", disabled:"Plätze für Rollstuhlfahrer:innen", bicycle:"Fahrradstellplätze",
+  motherchild:"Mutter-Kind-Abteil", children:"Kinderkino/Familienbereich", priority1:"Vorrangsitze", priority2:"Vorrangsitze",
+  luggage:"Gepäck", car:"Autoverladung", airport:"Flughafen" };
+function wagenInfo(w) {
+  const s = w.symbol || "";
+  const typ = (w.type || []);
+  if (typ.includes("engine") || /^L_/.test(s)) return {lok:true, text:"Lokomotive"};
+  const teile = [];
+  if (/_B(_|$)/.test(s) || /business/i.test(s)) teile.push("Business");
+  if (/_1(_|$)/.test(s)) teile.push("1. Klasse");
+  if (/_2(_|$)/.test(s)) teile.push("2. Klasse");
+  if (typ.includes("couchette") || /Liege/i.test(s)) teile.push("Liegewagen");
+  if (typ.includes("sleeper") || /Schlaf/i.test(s)) teile.push("Schlafwagen");
+  if (typ.includes("restaurant") || /_S(_|$)/.test(s)) teile.push("Speisewagen");
+  if (typ.includes("car")) teile.push("Autotransportwagen");
+  if (/^TW/.test(s)) teile.push("Steuerwagen");
+  return {lok:false, k1: /_(1|B)(_|$)/.test(s), text: teile.join(" · ") || "Wagen"};
+}
+
+async function wagenreihung() {
+  const f = fahrt;
+  const dep = f.dep;
+  const gleis = dep.platform || dep.plannedPlatform;
+  $("fInhalt").innerHTML = '<div class="lade">Lade Wagenreihung …</div>';
+  try {
+    if (f.wr === undefined) {
+      if (!gleis) throw new Error("kein Gleis bekannt");
+      const d = await wsDaten(await plc(), gleis);
+      const nr = String(dep.line?.fahrtNr || "").trim();
+      const zug = (d.deps || []).find(x => String(x.train).trim() === nr) || null;
+      f.wr = zug && zug.formation && zug.formation.length ? {zug, platform: d.platform || []} : null;
+    }
+    if (fahrt !== f || !document.querySelector('.tabs .on[data-tab="wr"]')) return;
+    if (!f.wr) {
+      $("fInhalt").innerHTML = `<div class="wr-leer">Für diesen Zug gibt es auf Gleis ${esc(gleis || "–")} (noch) keine Wagenreihung.<br>
+        Die ÖBB zeigen sie meist erst kurz vor der Abfahrt an, und nur für Züge mit Wagenreihungsdaten (vor allem Fernverkehr).</div>`;
+      return;
+    }
+    zeichneWagenreihung(f.wr, 0);
+  } catch (e) {
+    $("fInhalt").innerHTML = `<div class="hinweis">Wagenreihung nicht verfügbar (${esc(e.message)}).</div>`;
+  }
+}
+
+function zeichneWagenreihung(wr, sel) {
+  const {zug, platform} = wr;
+  const SEK = platform.length ? platform : [...new Set(zug.formation.map(w => w.sector))].sort().map(n => ({name:n, length:75}));
+  const sekStart = {}; let x = 0;
+  SEK.forEach(s => { sekStart[s.name] = x; x += s.length; });
+  const gesamt = x;
+  // Reihenfolge: links nach rechts wie die Sektoren
+  let wagen = zug.formation.slice();
+  const si = n => SEK.findIndex(s => s.name === n);
+  if (si(wagen[0].sector) > si(wagen[wagen.length - 1].sector)) wagen.reverse();
+  const laenge = wagen.reduce((a, w) => a + (w.length || 26), 0);
+  // Halteposition: so verschieben, dass möglichst jeder Wagen in seinem Sektor steht (ÖBB-"position" als Startwert)
+  let best = 0, bestScore = -1;
+  for (let x0 = 0; x0 <= Math.max(0, gesamt - laenge); x0 += 1) {
+    let pos = x0, score = 0;
+    for (const w of wagen) {
+      const mitte = pos + (w.length || 26) / 2, s = SEK[si(w.sector)];
+      if (s && mitte >= sekStart[s.name] && mitte <= sekStart[s.name] + s.length) score++;
+      pos += w.length || 26;
+    }
+    const naeher = typeof zug.position === "number" && Math.abs(x0 - zug.position) < Math.abs(best - zug.position);
+    if (score > bestScore || (score === bestScore && naeher)) { best = x0; bestScore = score; }
+  }
+  const breite = Math.max(360, Math.min(gesamt * 2.2, 900));   // Pixel
+  const k = breite / gesamt;
+  let html = "";
+  const w = wagen[sel], info = wagenInfo(w);
+  const ik = (w.icons || []).filter(i => IKONS[i]).map(i => `<span>${IKONS[i]}</span>`).join("");
+  html += `<div class="wr-detail"><div class="ikons">${ik}</div>
+    <div><span class="nr">${esc(w.wagonNumber || (info.lok ? "" : "–"))}</span>${info.lok ? "" : `<span class="kl">${esc(info.text)}</span>`}${info.lok ? `<span class="kl">${info.text}</span>` : ""}</div>
+    <div class="wo">${w.closed ? "Wagen geschlossen · " : ""}Hält im Abschnitt ${esc(w.sector)}${w.destination ? " · nach " + esc(w.destination) : ""}</div></div>
+    <div class="wr-linie"></div>`;
+  html += `<div class="wr"><div class="wr-in" style="width:${breite}px">`;
+  SEK.forEach(s => html += `<div class="sek" style="left:${sekStart[s.name] * k}px;width:${s.length * k}px">${esc(s.name)}</div>`);
+  let pos = best;
+  wagen.forEach((wg, i) => {
+    const inf = wagenInfo(wg), lw = (wg.length || 26) * k;
+    const lokRechts = inf.lok && i === wagen.length - 1;
+    html += `<button type="button" class="wg${inf.lok ? " lok" + (lokRechts ? " r" : "") : ""}${inf.k1 ? " k1" : ""}${wg.closed ? " zu" : ""}${i === sel ? " sel" : ""}"
+      data-i="${i}" style="left:${pos * k + 1}px;width:${lw - 2}px" aria-label="Wagen ${esc(wg.wagonNumber || "")}">${esc(wg.wagonNumber || "")}</button>`;
+    pos += wg.length || 26;
+  });
+  // Fahrtrichtung
+  const links = (zug.direction || "").toLowerCase() === "left";
+  html += `<div class="richtung" style="left:${links ? Math.max(0, best * k - 16) : (pos * k + 4)}px">${links ? "←" : "→"}</div>`;
+  html += `</div></div><div class="wr-ziel">Wagen in Fahrtrichtung ${links ? "von links" : "von rechts"} · Gleis ${esc(zug.track)}${zug.sector ? " · Abschnitt " + esc(zug.sector) : ""}</div>`;
+  $("fInhalt").innerHTML = html;
+  $("fInhalt").querySelectorAll(".wg").forEach(b => b.onclick = () => zeichneWagenreihung(wr, +b.dataset.i));
+  const s = $("fInhalt").querySelector(".wg.sel"); if (s) s.scrollIntoView({inline:"center", block:"nearest"});
+}
+
+// ---------- Bahnhofsuche ----------
+$("stationBtn").onclick = () => { $("suche").hidden = false; $("such").value = ""; $("treffer").innerHTML = ""; setTimeout(() => $("such").focus(), 50); };
+$("sucheZu").onclick = e => { e.preventDefault(); $("suche").hidden = true; };
+let sNr = 0, sTimer;
+async function suche(q) {
+  const n = ++sNr; $("treffer").innerHTML = "";
+  if (q.trim().length < 2) { $("sStatus").textContent = ""; return; }
+  $("sStatus").textContent = "Suche …";
+  try {
+    const r = await fetch(`${API}/wagenstand/stations?q=${encodeURIComponent(q.trim())}`);
+    const j = await r.json(); if (n !== sNr) return;
+    if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
+    $("sStatus").textContent = j.length ? "" : "Kein Bahnhof gefunden.";
+    j.forEach(s => {
+      const b = document.createElement("button"); b.type = "button";
+      b.innerHTML = '<span class="n"></span><span class="eva"></span>';
+      b.querySelector(".n").textContent = s.name; b.querySelector(".eva").textContent = "EVA " + s.eva;
+      b.onclick = () => { eva = s.eva; stationName = s.name; urlSetzen(); kopf(); $("suche").hidden = true; $("liste").innerHTML = '<div class="lade">Lade …</div>'; laden(); };
+      $("treffer").appendChild(b);
+    });
+  } catch (e) { if (n === sNr) $("sStatus").textContent = "Suche fehlgeschlagen: " + e.message; }
+}
+$("such").addEventListener("input", () => { clearTimeout(sTimer); sTimer = setTimeout(() => suche($("such").value), 250); });
+
+kopf(); laden(); setInterval(() => { if ($("fahrt").hidden) laden(); }, 30000);
+</script>
+</body>
+</html>

@@ -105,6 +105,13 @@ async function route(url) {
 		});
 		return json(200, {departures: r.departures || r}, 60);
 	}
+	if ((m = path.match(/^\/stops\/([^/]+)\/arrivals$/))) {
+		const r = await hafas.arrivals(decodeURIComponent(m[1]), {
+			when: date(q.get('when')), duration: int(q.get('duration'), 30), products: products(q),
+			remarks: false, language: 'de',
+		});
+		return json(200, {arrivals: r.arrivals || r}, 60);
+	}
 	if ((m = path.match(/^\/trips\/(.+)$/))) {
 		const r = await hafas.trip(decodeURIComponent(m[1]), {stopovers: true, remarks: false, polyline: false, language: 'de'});
 		return json(200, {trip: r.trip || r}, 120);

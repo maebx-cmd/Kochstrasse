@@ -36,6 +36,7 @@ h2 { font-size:12px; font-weight:400; color:var(--fg); margin:12px 0 6px; letter
 /* Betreiber: Logo in Weiß (Bild) oder – solange kein Logo da ist – weißer Schriftzug */
 .tag { font-size:13px; font-weight:900; font-style:italic; letter-spacing:.01em; color:#fff; flex-shrink:0;
        font-family:"Arial Black", Arial, sans-serif; line-height:1; }
+.meta > .m { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 img.tag { height:22px; width:auto; display:block; font-style:normal; }
 img.tag.oebb, img.tag.vvt { height:15px; } img.tag.db { height:19px; }
 

@@ -30,7 +30,8 @@
 <h2 class="oebb">Bahnhöfe</h2>
 <div class="grid" id="fix"></div>
 
-<p class="hint">Die Suche nimmt die Bahnhofsliste von ÖBB Live (Österreich) und öffnet die Live-Tafel – mit Gleisänderungen, Fahrtverlauf und Wagenreihung je Zug.</p>
+<p class="hint">Die Suche nimmt die Bahnhofsliste von ÖBB Live (Österreich) und öffnet den Live-Monitor von meine.oebb.at –
+mit Gleis und Gleisänderungen, wie am Bahnhof.</p>
 
 <script>
   const FIX = [
@@ -55,8 +56,9 @@
   });
   zeigeArt();
 
-  // Neue ÖBB-Tafel mit Fahrtverlauf und Wagenreihung
-  const url = (eva, name) => "../tafel/?eva=" + encodeURIComponent(eva) + (art === "arrival" ? "&art=an" : "") + (name ? "&name=" + encodeURIComponent(name) : "");
+  const url = eva => art === "arrival"
+    ? "https://meine.oebb.at/abfahrtankunft/arrival?evaNr=" + encodeURIComponent(eva) + "&static=true&page=1&offset=0&ignoreIncident=false&contentType=arrivals"
+    : "https://meine.oebb.at/abfahrtankunft/departure?evaNr=" + encodeURIComponent(eva) + "&static=true&page=1&offset=0&ignoreIncident=false&contentType=departure";
 
   const kachel = (s, ziel) => {
     const a = document.createElement("a");

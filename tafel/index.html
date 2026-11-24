@@ -126,7 +126,7 @@
   <button type="button" data-f="fern">Fernverkehr</button>
   <button type="button" data-f="regio">Regio</button>
   <button type="button" data-f="sbahn">S-Bahn</button>
-  <button type="button" data-f="bus">Bus</button>
+  <button type="button" data-f="bus">Bus &amp; Tram</button>
 </div>
 
 <div class="kopfzeile"><div>Zeit<i>time</i></div><div>Zug · Nach<i>train · to</i></div><div class="r">Gleis<i>platform</i></div></div>
@@ -160,6 +160,7 @@ const API = (() => {
 })();
 const WS = "wss://meine.oebb.at/abfahrtankunft/webdisplay/web_client/ws/";
 const $ = id => document.getElementById(id);
+const zugname = d => (d.line?.name || "").replace(/\s*\(Zug-Nr\.[^)]*\)/, "");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const hhmm = d => d ? new Date(d).toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit"}) : "";
 const p = new URLSearchParams(location.search);
@@ -173,10 +174,11 @@ setInterval(() => $("uhr").textContent = new Date().toLocaleTimeString("de-AT", 
 $("uhr").textContent = new Date().toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
 
 const PRODUKTE = {
+  alle:  ["nationalExpress", "national", "interregional", "regional", "suburban"],
   fern:  ["nationalExpress", "national", "interregional"],
   regio: ["regional"],
   sbahn: ["suburban"],
-  bus:   ["bus", "onCall"],
+  bus:   ["bus", "onCall", "tram", "subway"],
 };
 const verspaetet = (plan, ist) => plan && ist && Math.abs(new Date(ist) - new Date(plan)) >= 60000;
 
@@ -202,7 +204,10 @@ async function laden() {
     const j = await r.json();
     if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
     liste = (art === "an" ? j.arrivals : j.departures) || [];
-    if (!stationName && liste[0] && liste[0].stop) { stationName = liste[0].stop.name; urlSetzen(); }
+    if (!stationName) {
+      const eig = liste.find(d => d.stop && d.stop.id === String(eva)) || liste.find(d => d.line && d.line.mode === "train");
+      if (eig) { stationName = eig.stop.name.replace(/\s*\(.*\)$/, ""); urlSetzen(); }
+    }
     kopf(); zeichnen();
     $("fehler").hidden = true;
     $("stand").textContent = "Stand " + new Date().toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
@@ -221,7 +226,7 @@ function zeichnen() {
     const ziel = art === "an" ? (d.provenance || d.origin?.name || "") : (d.direction || "");
     return `<button class="zeile" type="button" data-i="${liste.indexOf(d)}">
       <div class="zeit"><span class="soll${spaet ? " weg" : ""}">${hhmm(d.plannedWhen || d.when)}</span>${spaet ? `<span class="ist">${hhmm(d.when)}</span>` : ""}</div>
-      <div style="min-width:0"><span class="zug">${esc(d.line?.name || "")}</span>
+      <div style="min-width:0"><span class="zug">${esc(zugname(d))}</span>
         <div class="ziel${d.cancelled ? " aus" : ""}">${art === "an" ? "von " : ""}${esc(ziel)}</div>
         ${d.cancelled ? '<div class="info">Fällt aus</div>' : (d.delay >= 300 ? `<div class="info">+${Math.round(d.delay / 60)} min</div>` : "")}</div>
       <div class="gleis${gleisNeu ? " neu" : ""}">${gleisNeu ? `<span class="alt">${esc(d.plannedPlatform)}</span>` : ""}${esc(d.platform || d.plannedPlatform || "")}</div>
@@ -253,7 +258,7 @@ $("zurueck").onclick = () => { $("fahrt").hidden = true; fahrt = null; document.
 function oeffneFahrt(dep, tab) {
   fahrt = {dep, trip: null, wr: undefined};
   const ziel = art === "an" ? (dep.provenance || "") : dep.direction;
-  $("fkopf").innerHTML = `<span class="zug">${esc(dep.line?.name)}</span><div class="nach">${art === "an" ? "von" : "nach"}</div><div class="ziel">${esc(ziel)}</div>`;
+  $("fkopf").innerHTML = `<span class="zug">${esc(zugname(dep))}</span><div class="nach">${art === "an" ? "von" : "nach"}</div><div class="ziel">${esc(ziel)}</div>`;
   $("fInhalt").innerHTML = '<div class="lade">Lade …</div>';
   $("fahrt").hidden = false; $("fahrt").scrollTop = 0; document.body.style.overflow = "hidden";
   zeigeTab(tab);

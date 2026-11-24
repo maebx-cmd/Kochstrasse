@@ -41,6 +41,7 @@
   .gleis { text-align:right; font-size:21px; line-height:1.05; }
   .gleis .alt { display:block; font-size:12px; text-decoration:line-through; opacity:.7; }
   .gleis.neu { color:var(--gelb); }
+  .gleis small, .halt .g small { display:block; font-size:11px; opacity:.85; }
   .leer, .lade { padding:24px 12px; text-align:center; color:var(--dim); }
   .hinweis { color:var(--gelb); font-size:14px; padding:10px 0; }
   .stand { display:flex; justify-content:space-between; font-size:11px; color:var(--dim); padding:10px 0 4px; }
@@ -84,8 +85,8 @@
   /* Wagenreihung */
   .wr-detail { min-height:150px; display:flex; flex-direction:column; justify-content:flex-end; padding-bottom:14px; }
   .wr-detail .ikons { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; font-size:14px; }
-  .wr-detail .ikons span::before { content:""; display:inline-block; width:18px; height:18px; margin-right:8px; vertical-align:-4px;
-                                   border:1.5px solid #fff; text-align:center; }
+  .wr-detail .ikons span b { display:inline-block; min-width:22px; height:20px; margin-right:8px; padding:0 3px; background:#fff; color:var(--bg);
+                             font-size:11px; line-height:20px; text-align:center; font-weight:700; }
   .wr-detail .nr { font-size:34px; line-height:1; margin-right:12px; }
   .wr-detail .kl { display:inline-block; background:var(--gelb); color:var(--bg); padding:1px 5px; font-weight:700; }
   .wr-detail .wo { font-size:14px; margin-top:4px; }
@@ -160,6 +161,13 @@ const API = (() => {
 })();
 const WS = "wss://meine.oebb.at/abfahrtankunft/webdisplay/web_client/ws/";
 const $ = id => document.getElementById(id);
+// Gleis "6A-B" → Nummer 6, Abschnitt A-B; ein Gleiswechsel zählt nur, wenn sich die Nummer ändert
+const gleisTeile = g => { const m = String(g || "").match(/^(\d+)\s*([A-Z].*)?$/); return m ? {nr:m[1], sek:m[2] || ""} : {nr:String(g || ""), sek:""}; };
+const gleisHtml = (ist, plan) => {
+  const a = gleisTeile(ist || plan), b = gleisTeile(plan);
+  const neu = ist && plan && a.nr !== b.nr;
+  return {neu, html:`${neu ? `<span class="alt">${esc(b.nr)}</span>` : ""}${esc(a.nr)}${a.sek ? `<small>${esc(a.sek)}</small>` : ""}`};
+};
 const zugname = d => (d.line?.name || "").replace(/\s*\(Zug-Nr\.[^)]*\)/, "");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const hhmm = d => d ? new Date(d).toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit"}) : "";
@@ -222,14 +230,14 @@ function zeichnen() {
   const rows = liste.filter(d => !f || f.includes(d.line && d.line.product));
   $("liste").innerHTML = rows.map((d, i) => {
     const spaet = verspaetet(d.plannedWhen, d.when);
-    const gleisNeu = d.platform && d.plannedPlatform && d.platform !== d.plannedPlatform;
+    const gl = gleisHtml(d.platform, d.plannedPlatform);
     const ziel = art === "an" ? (d.provenance || d.origin?.name || "") : (d.direction || "");
     return `<button class="zeile" type="button" data-i="${liste.indexOf(d)}">
       <div class="zeit"><span class="soll${spaet ? " weg" : ""}">${hhmm(d.plannedWhen || d.when)}</span>${spaet ? `<span class="ist">${hhmm(d.when)}</span>` : ""}</div>
       <div style="min-width:0"><span class="zug">${esc(zugname(d))}</span>
         <div class="ziel${d.cancelled ? " aus" : ""}">${art === "an" ? "von " : ""}${esc(ziel)}</div>
         ${d.cancelled ? '<div class="info">Fällt aus</div>' : (d.delay >= 300 ? `<div class="info">+${Math.round(d.delay / 60)} min</div>` : "")}</div>
-      <div class="gleis${gleisNeu ? " neu" : ""}">${gleisNeu ? `<span class="alt">${esc(d.plannedPlatform)}</span>` : ""}${esc(d.platform || d.plannedPlatform || "")}</div>
+      <div class="gleis${gl.neu ? " neu" : ""}">${gl.html}</div>
     </button>`;
   }).join("") || '<div class="leer">Keine Fahrten in den nächsten 2 Stunden.</div>';
 }
@@ -293,8 +301,8 @@ async function fahrtverlauf() {
       html += `<div class="halt${vorbei ? " vorbei" : ""}${hier ? " hier" : ""}${s.cancelled ? " aus" : ""}">
         <div class="t">${spaet ? `<span class="soll weg">${hhmm(plan)}</span><span class="ist spaet">${hhmm(ist)}</span>` : `<span class="ist">${hhmm(plan || ist)}</span>`}</div>
         <div class="strich"></div>
-        <div class="n">${esc(s.stop?.name)}${s.cancelled ? "<small>Halt entfällt</small>" : ""}</div>
-        <div class="g${pl && pp && pl !== pp ? " neu" : ""}">${esc(pl || pp || "")}</div></div>`;
+        <div class="n">${esc((s.stop?.name || "").replace(/\s+(Bahnhof|Bahnhst\.?)$/, ""))}${s.cancelled ? "<small>Halt entfällt</small>" : ""}</div>
+        <div class="g${gleisHtml(pl, pp).neu ? " neu" : ""}">${gleisHtml(pl, pp).html}</div></div>`;
     });
     $("fInhalt").innerHTML = html + "</div>";
     const h = $("fInhalt").querySelector(".hier"); if (h) h.scrollIntoView({block:"center"});
@@ -332,9 +340,9 @@ function wsDaten(stationId, gleis) {
   });
 }
 
-const IKONS = { wlan:"WLAN", silence:"Ruhebereich", disabled:"Plätze für Rollstuhlfahrer:innen", bicycle:"Fahrradstellplätze",
-  motherchild:"Mutter-Kind-Abteil", children:"Kinderkino/Familienbereich", priority1:"Vorrangsitze", priority2:"Vorrangsitze",
-  luggage:"Gepäck", car:"Autoverladung", airport:"Flughafen" };
+const IKONS = { wlan:["WLAN","WLAN"], silence:["Ruhebereich","psst"], disabled:["Plätze für Rollstuhlfahrer:innen","♿︎"], bicycle:["Fahrradstellplätze","Rad"],
+  motherchild:["Mutter-Kind-Abteil","M+K"], children:["Kinderkino/Familienbereich","Kids"], priority1:["Vorrangsitze","VS"], priority2:["Vorrangsitze","VS"],
+  luggage:["Gepäck","Gep"], car:["Autoverladung","Auto"], airport:["Flughafen","✈︎"] };
 function wagenInfo(w) {
   const s = w.symbol || "";
   const typ = (w.type || []);
@@ -354,7 +362,7 @@ function wagenInfo(w) {
 async function wagenreihung() {
   const f = fahrt;
   const dep = f.dep;
-  const gleis = dep.platform || dep.plannedPlatform;
+  const gleis = gleisTeile(dep.platform || dep.plannedPlatform).nr;
   $("fInhalt").innerHTML = '<div class="lade">Lade Wagenreihung …</div>';
   try {
     if (f.wr === undefined) {
@@ -403,7 +411,7 @@ function zeichneWagenreihung(wr, sel) {
   const k = breite / gesamt;
   let html = "";
   const w = wagen[sel], info = wagenInfo(w);
-  const ik = (w.icons || []).filter(i => IKONS[i]).map(i => `<span>${IKONS[i]}</span>`).join("");
+  const ik = (w.icons || []).filter(i => IKONS[i]).map(i => `<span><b>${IKONS[i][1]}</b>${IKONS[i][0]}</span>`).join("");
   html += `<div class="wr-detail"><div class="ikons">${ik}</div>
     <div><span class="nr">${esc(w.wagonNumber || (info.lok ? "" : "–"))}</span>${info.lok ? "" : `<span class="kl">${esc(info.text)}</span>`}${info.lok ? `<span class="kl">${info.text}</span>` : ""}</div>
     <div class="wo">${w.closed ? "Wagen geschlossen · " : ""}Hält im Abschnitt ${esc(w.sector)}${w.destination ? " · nach " + esc(w.destination) : ""}</div></div>
@@ -421,7 +429,7 @@ function zeichneWagenreihung(wr, sel) {
   // Fahrtrichtung
   const links = (zug.direction || "").toLowerCase() === "left";
   html += `<div class="richtung" style="left:${links ? Math.max(0, best * k - 16) : (pos * k + 4)}px">${links ? "←" : "→"}</div>`;
-  html += `</div></div><div class="wr-ziel">Wagen in Fahrtrichtung ${links ? "von links" : "von rechts"} · Gleis ${esc(zug.track)}${zug.sector ? " · Abschnitt " + esc(zug.sector) : ""}</div>`;
+  html += `</div></div><div class="wr-ziel">Fahrtrichtung ${links ? "←" : "→"} · Wagen antippen für Details · Gleis ${esc(zug.track)}${zug.sector ? " · Abschnitt " + esc(zug.sector) : ""}</div>`;
   $("fInhalt").innerHTML = html;
   $("fInhalt").querySelectorAll(".wg").forEach(b => b.onclick = () => zeichneWagenreihung(wr, +b.dataset.i));
   const s = $("fInhalt").querySelector(".wg.sel"); if (s) s.scrollIntoView({inline:"center", block:"nearest"});

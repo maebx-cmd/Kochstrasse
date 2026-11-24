@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000084">
+<link rel="apple-touch-icon" href="../icon.png">
+<link rel="stylesheet" href="../ui.css">
+<title>IVB · Haltestelle suchen</title>
+<style>
+  .chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .chip { font:inherit; font-size:16px; padding:9px 12px; border:0; border-radius:0; cursor:pointer;
+          background:var(--tief); color:var(--dim); text-align:left; }
+  .chip.on { background:var(--card); color:var(--fg); box-shadow:inset 0 -3px 0 var(--gelb); }
+  .chip b { font-weight:700; }
+  .chip small { display:block; font-size:12px; color:var(--dim); margin-top:2px; }
+  #steige .chip { flex:1 1 100%; }
+  .linie { min-width:52px; text-align:center; font-weight:700; }
+  .row { display:flex; justify-content:space-between; align-items:baseline; margin:12px 0 6px; }
+  .row h2 { margin:0; }
+  .alle { font:inherit; font-size:12px; background:none; border:0; color:var(--gelb); cursor:pointer; }
+  .go { width:100%; margin-top:14px; font:inherit; font-size:18px; font-weight:700; padding:14px; border:0;
+        border-radius:0; background:var(--gelb); color:var(--bg); cursor:pointer; }
+  #auswahl h3 { font-size:20px; font-weight:400; color:var(--gelb); margin:14px 0 2px; }
+</style>
+</head>
+<body>
+<header><a href="../start.html" aria-label="Startseite"><svg class="pikto" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" fill="#fff"/><path d="M7 4h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 3v4h10V7zm1 7.2a1.2 1.2 0 1 0 0 .1zm8 0a1.2 1.2 0 1 0 0 .1zM8 18l-2 3h2l1.3-2h5.4l1.3 2h2l-2-3z" fill="#000084"/></svg></a><h1>IVB · Suche<span class="en">search</span></h1><a class="back" href="../start.html">‹ Start</a></header>
+
+<h2>Haltestelle suchen</h2>
+<div class="suche">
+  <input id="such" type="search" placeholder="Haltestelle, z. B. Anichstraße, Technik …" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+  <div id="status" class="status"></div>
+  <div id="treffer" class="treffer"></div>
+</div>
+
+<div id="auswahl" hidden>
+  <h3 id="hName"></h3>
+  <div id="aStatus" class="status"></div>
+  <div class="row"><h2>Steige</h2><button class="alle" data-grp="steig" type="button">alle / keine</button></div>
+  <div class="chips" id="steige"></div>
+  <div class="row"><h2>Linien</h2><button class="alle" data-grp="linie" type="button">alle / keine</button></div>
+  <div class="chips" id="linien"></div>
+  <button class="go" id="go" type="button">Monitor anzeigen</button>
+  <p class="hint">Steige und Linien stammen aus den aktuellen Abfahrten der nächsten Stunden. Eine Linie, die gerade nicht fährt (z. B. nachts), fehlt in der Liste.</p>
+</div>
+
+<h2 id="zuletztH" hidden>Zuletzt geöffnet</h2>
+<div class="grid" id="zuletzt"></div>
+
+<script>
+const BASE = "https://smartinfo.ivb.at/api/JSON/";
+const $ = id => document.getElementById(id);
+const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ß/g, "ss").replace(/[^a-z0-9]+/g, " ").trim();
+const setStatus = (el, t, err) => { el.textContent = t || ""; el.classList.toggle("err", !!err); };
+const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+// ---- Stationsverzeichnis (einmal laden, 1 Tag im Browser merken) ----
+let STOPS = null;
+async function ladeStops() {
+  if (STOPS) return STOPS;
+  const c = lsGet("ivb-stops", null);
+  if (c && Date.now() - c.t < 864e5 && c.list?.length) return (STOPS = c.list);
+  const r = await fetch(BASE + "STOPS");
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const raw = await r.json();
+  const arr = Array.isArray(raw) ? raw : (raw.stops || raw.data || Object.values(raw));
+  const seen = new Set();
+  STOPS = arr.map(x => x.stop || x.smartinfo || x)
+    .filter(s => s && s.uid && s.name)
+    .map(s => ({ uid: String(s.uid), name: String(s.name), n: norm(s.name) }))
+    .filter(s => !seen.has(s.uid) && seen.add(s.uid))
+    .sort((a, b) => a.name.localeCompare(b.name, "de"));
+  lsSet("ivb-stops", { t: Date.now(), list: STOPS });
+  return STOPS;
+}
+
+// ---- Suche ----
+const such = $("such"), status = $("status"), treffer = $("treffer");
+let timer = null;
+async function suche(q) {
+  treffer.innerHTML = "";
+  const nq = norm(q);
+  if (nq.length < 2) { setStatus(status, ""); return; }
+  try {
+    if (!STOPS) setStatus(status, "Lade Haltestellen …");
+    const list = await ladeStops();
+    const worte = nq.split(" ");
+    const hits = list.filter(s => worte.every(w => s.n.includes(w)))
+      .sort((a, b) => (b.n.startsWith(nq) - a.n.startsWith(nq)) || a.name.length - b.name.length)
+      .slice(0, 15);
+    setStatus(status, hits.length ? "" : "Keine Haltestelle gefunden.");
+    hits.forEach(s => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.innerHTML = '<span class="n"></span><span class="eva"></span>';
+      b.querySelector(".n").textContent = s.name;
+      b.querySelector(".eva").textContent = "ID " + s.uid;
+      b.onclick = () => waehle(s);
+      treffer.appendChild(b);
+    });
+  } catch (e) {
+    setStatus(status, "Haltestellen konnten nicht geladen werden (" + e.message + ").", true);
+  }
+}
+such.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => suche(such.value), 200); });
+such.addEventListener("keydown", e => { if (e.key === "Enter") { clearTimeout(timer); suche(such.value); such.blur(); } });
+
+// ---- Auswahl: Steige und Linien aus den aktuellen Abfahrten ----
+let aktuell = null;
+const chip = (wert, html, grp) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip on" + (grp === "linie" ? " linie" : "");
+  b.dataset.wert = wert; b.innerHTML = html;
+  b.onclick = () => b.classList.toggle("on");
+  return b;
+};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function waehle(s) {
+  aktuell = s;
+  treffer.innerHTML = ""; setStatus(status, ""); such.value = s.name;
+  $("auswahl").hidden = false; $("hName").textContent = s.name;
+  $("steige").innerHTML = ""; $("linien").innerHTML = "";
+  const aSt = $("aStatus");
+  setStatus(aSt, "Lade Abfahrten …");
+  try {
+    const r = await fetch(BASE + "PASSAGE?stopID=" + encodeURIComponent(s.uid) + "&tmin=0&timestamp=" + Date.now());
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const deps = (await r.json()).map(x => x.smartinfo || x);
+    const steige = new Map(), linien = new Set();
+    deps.forEach(d => {
+      const st = d.plabel || d.pnum || "";
+      if (st) { if (!steige.has(st)) steige.set(st, new Set()); steige.get(st).add(d.direction); }
+      if (d.route) linien.add(d.route);
+    });
+    if (!deps.length) { setStatus(aSt, "Derzeit keine Abfahrten – der Monitor zeigt trotzdem alles an, sobald wieder etwas fährt."); }
+    else setStatus(aSt, "");
+    [...steige.keys()].sort().forEach(st => {
+      const ziele = [...steige.get(st)].slice(0, 3).join(", ");
+      $("steige").appendChild(chip(st, "<b>Steig " + esc(st) + "</b><small>" + esc(ziele) + "</small>", "steig"));
+    });
+    [...linien].sort((a, b) => a.localeCompare(b, "de", { numeric: true }))
+      .forEach(l => $("linien").appendChild(chip(l, esc(l), "linie")));
+  } catch (e) {
+    setStatus(aSt, "Abfahrten konnten nicht geladen werden (" + e.message + "). Der Monitor geht trotzdem – mit allen Steigen und Linien.", true);
+  }
+  $("auswahl").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+document.querySelectorAll(".alle").forEach(b => b.onclick = () => {
+  const box = $(b.dataset.grp === "steig" ? "steige" : "linien");
+  const chips = [...box.children], an = chips.some(c => !c.classList.contains("on"));
+  chips.forEach(c => c.classList.toggle("on", an));
+});
+
+// Ausgewählte Werte → Parameter (alle oder keine gewählt = kein Filter)
+const auswahl = id => {
+  const chips = [...$(id).children], on = chips.filter(c => c.classList.contains("on")).map(c => c.dataset.wert);
+  return on.length && on.length < chips.length ? on : [];
+};
+const monitorUrl = m => "../?stop=" + encodeURIComponent(m.uid) + "&name=" + encodeURIComponent(m.name)
+  + "&steig=" + (m.steig.length ? m.steig.map(encodeURIComponent).join(",") : "alle")
+  + (m.linie.length ? "&linie=" + m.linie.map(encodeURIComponent).join(",") : "");
+
+$("go").onclick = () => {
+  if (!aktuell) return;
+  const m = { uid: aktuell.uid, name: aktuell.name, steig: auswahl("steige"), linie: auswahl("linien") };
+  const key = JSON.stringify([m.uid, m.steig, m.linie]);
+  lsSet("ivb-zuletzt", [m, ...lsGet("ivb-zuletzt", []).filter(x => JSON.stringify([x.uid, x.steig, x.linie]) !== key)].slice(0, 6));
+  location.href = monitorUrl(m);
+};
+
+// ---- Zuletzt geöffnet ----
+const zul = lsGet("ivb-zuletzt", []);
+$("zuletztH").hidden = !zul.length;
+zul.forEach(m => {
+  const a = document.createElement("a");
+  a.className = "btn ivb"; a.href = monitorUrl(m);
+  a.innerHTML = '<span class="name"></span><span class="meta"><span class="m"></span> <img class="tag" src="../ivb-logo-weiss.png" alt="IVB"></span>';
+  a.querySelector(".name").textContent = m.name;
+  a.querySelector(".m").textContent = [m.steig.length ? "Steig " + m.steig.join(", ") : "", m.linie.join(" · ")].filter(Boolean).join(" · ") || "alle";
+  $("zuletzt").appendChild(a);
+});
+</script>
+</body>
+</html>

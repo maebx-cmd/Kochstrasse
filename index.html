@@ -97,6 +97,7 @@
 const p = new URLSearchParams(location.search);
 const stop = p.get("stop") || "66402";
 const steig = (p.get("steig") || "B").toUpperCase();  // Standard: nur Steig B; "ALLE" = alle Steige
+const steige = steig === "ALLE" ? [] : steig.split(",").map(x => x.trim()).filter(Boolean);  // mehrere mit Komma: A,B
 const n = parseInt(p.get("n") || "12", 10);
 const linien = (p.get("linie") || "").toUpperCase().split(",").map(x => x.trim()).filter(Boolean);
 const debug = p.has("debug");
@@ -136,7 +137,7 @@ async function laden() {
     const raw = await r.json();
     if (debug) { const d = document.getElementById("debug"); d.hidden = false; d.textContent = JSON.stringify(raw.slice(0, 3), null, 2); }
 
-    const name = NAMEN[stop] || ("Haltestelle " + stop);
+    const name = p.get("name") || NAMEN[stop] || ("Haltestelle " + stop);
     document.getElementById("station").textContent = name + (linien.length ? " · " + linien.join(", ") : "");
     document.title = "Abfahrt " + name;
 
@@ -148,7 +149,7 @@ async function laden() {
                ankunft: s.stat === "ARRIVING",
                min: (String(s.time || "").match(/^(\d+)\s*min/i) || [])[1], ist, plan };
     });
-    if (steig && steig !== "ALLE") rows = rows.filter(a => a.steig.toUpperCase() === steig);
+    if (steige.length) rows = rows.filter(a => steige.includes(a.steig.toUpperCase()));
     if (linien.length) rows = rows.filter(a => linien.includes(a.linie.toUpperCase()));
     rows = rows.slice(0, n);
 

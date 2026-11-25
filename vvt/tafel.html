@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000084">
+<link rel="apple-touch-icon" href="../icon.png">
+<link rel="icon" href="../favicon.ico" sizes="any">
+<title>Abfahrt</title>
+<style>
+  /* VVT-Abfahrtsanzeige im Stil der ÖBB-Infra-Tafel – Daten: ÖBB-Fahrplanauskunft über den Worker */
+  :root { --navy:#000084; --blau:#0000cd; --gelb:#ffe600; --weiss:#ffffff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  [hidden] { display:none !important; }
+  html, body { background:var(--navy); }
+  body { color:var(--weiss); font-family:Arial, "Helvetica Neue", Helvetica, sans-serif;
+         padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+         -webkit-text-size-adjust:100%; }
+
+  /* Kopf: Piktogramm · Abfahrt · Departure · Uhr · Logo */
+  .kopf { position:relative; height:112px; overflow:hidden; }
+  .zeile { position:absolute; left:2px; top:12px; display:flex; align-items:baseline; gap:0; font-size:16.5px; line-height:1; white-space:nowrap; }
+  .pikto { display:block; width:15px; height:15px; align-self:center; margin-right:6px; }
+  .zeile .de { color:var(--gelb); width:82px; }
+  .zeile .en { color:var(--gelb); font-style:italic; width:82px; }
+  .zeile .uhr { font-variant-numeric:tabular-nums; }
+  .logo { position:absolute; right:10px; top:6px; text-align:right; }
+  .logo .marke { display:block; height:32px; margin-top:12px; width:auto; margin-left:auto; }
+  .logo .sub { font-size:13px; font-weight:700; letter-spacing:.14em; margin-top:6px; text-transform:uppercase;
+               max-width:60vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* Tabelle */
+  table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  col.c-zeit { width:13.5%; } col.c-erw { width:14%; } col.c-zug { width:13%; }
+  col.c-nach { width:48.5%; } col.c-steig { width:11%; }
+  th { overflow:hidden; white-space:nowrap; text-align:left; font-weight:400; font-size:11px; padding:12px 0 10px 8px; vertical-align:top; line-height:1.15; }
+  th i { display:block; margin-top:14px; }
+  th.r { text-align:right; padding:12px 10px 10px 0; overflow:visible; direction:rtl; }
+  td { padding:0 0 0 8px; height:46px; font-size:14.5px; vertical-align:middle; white-space:nowrap; overflow:hidden; }
+  tbody tr:nth-child(odd) td { background:var(--blau); }
+  tbody tr:nth-child(even) td { background:var(--navy); }
+  .zeit, .erw { font-variant-numeric:tabular-nums; }
+  .erw { color:var(--gelb); }
+  .blink { animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { visibility:hidden; } }
+  .zug { overflow:visible; }
+  .badge { display:inline-block; min-width:30px; padding:1px 4px; text-align:center; font-weight:700; font-size:13px;
+           background:var(--weiss); color:#e30613; vertical-align:middle; line-height:1.25; }
+  .nach { padding-left:4px; }
+  /* LED-Lauftext wie im Original: was nicht passt, läuft von rechts nach links durch */
+  .lz { display:block; overflow:hidden; white-space:nowrap; }
+  .lz > .t { display:inline-block; }
+  .lz.lauf > .t { animation:lauf var(--d, 8s) linear infinite; will-change:transform; }
+  @keyframes lauf { from { transform:translateX(var(--w, 100px)); } to { transform:translateX(-100%); } }
+  .via { font-size:20px; line-height:1.1; padding-left:4px; }
+
+  .steig { text-align:right; padding-right:10px; font-size:14.5px; }
+  .leer td { text-align:center; height:60px; font-size:15px; }
+
+  .fehler { padding:16px 12px; color:var(--gelb); font-size:14px; line-height:1.4; }
+  .stand { padding:8px 12px 14px; font-size:11px; opacity:.55; display:flex; justify-content:space-between; }
+  .stand a { color:inherit; }
+  .sub { cursor:pointer; }
+  .sub::after { content:" ▾"; letter-spacing:0; }
+  .stand button { font:inherit; background:none; border:0; color:inherit; text-decoration:underline; cursor:pointer; padding:0; }
+  .badge { color:#e2002a; }
+
+  /* Haltestellen-Auswahl */
+  #wahl { position:fixed; inset:0; z-index:5; background:var(--navy); overflow-y:auto;
+          padding:calc(env(safe-area-inset-top) + 14px) 12px calc(env(safe-area-inset-bottom) + 20px); }
+  #wahl .ko { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:12px; }
+  #wahl h1 { font-size:21px; font-weight:400; color:var(--gelb); }
+  #wahl h1 i { margin-left:12px; }
+  #wahl .zu { font:inherit; font-size:15px; background:none; border:0; color:#fff; cursor:pointer; }
+  #wahl h2 { font-size:12px; font-weight:400; margin:14px 0 6px; }
+  #wahl input { width:100%; font:inherit; font-size:18px; padding:12px 13px; border:2px solid var(--blau); border-radius:0;
+                background:#00005c; color:#fff; -webkit-appearance:none; }
+  #wahl input:focus { outline:none; border-color:var(--gelb); }
+  .liste2 { display:flex; flex-direction:column; }
+  .liste2 button { font:inherit; font-size:17px; text-align:left; padding:13px 12px; border:0; background:var(--blau); color:#fff; cursor:pointer; }
+  .liste2 button:nth-child(even) { background:#00005c; }
+  .liste2 button.on { background:#fff; color:var(--navy); font-weight:700; }
+  .status2 { color:#c9c9ff; font-size:14px; margin:8px 2px; }
+  .status2:empty { display:none; }
+  pre#debug { white-space:pre-wrap; word-break:break-all; font-size:11px; padding:12px; background:#00004a; }
+
+  /* Breitere Bildschirme: alles etwas größer, wie auf dem Monitor */
+  @media (min-width:700px) {
+    .kopf { height:150px; } .zeile { font-size:30px; } .zeile .de, .zeile .en { width:150px; } .pikto { width:26px; height:26px; }
+    .logo .marke { height:64px; } .logo .sub { font-size:20px; }
+    th { font-size:15px; } td, .steig { font-size:22px; height:64px; } .via { font-size:28px; } .badge { font-size:19px; min-width:44px; }
+  }
+</style></head>
+<body>
+<div class="kopf"><div class="zeile">
+  <a href="../start.html" aria-label="Zur Startseite">
+    <svg class="pikto" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" fill="#fff"/>
+      <path d="M7 4h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 3v4h10V7zm1 7.2a1.2 1.2 0 1 0 0 .1zm8 0a1.2 1.2 0 1 0 0 .1zM8 18l-2 3h2l1.3-2h5.4l1.3 2h2l-2-3z" fill="#000084"/></svg>
+  </a>
+  <div class="de">Abfahrt</div>
+  <div class="en">Departure</div>
+  <div class="uhr" id="uhr"></div></div>
+  <div class="logo"><img class="marke" src="../vvt-logo-weiss.png" alt="VVT"><div class="sub" id="station" role="button" tabindex="0">Haltestelle wählen</div></div>
+</div>
+
+<table>
+  <colgroup><col class="c-zeit"><col class="c-erw"><col class="c-zug"><col class="c-nach"><col class="c-steig"></colgroup>
+  <thead><tr>
+    <th>Zeit<i>time</i></th><th>Erwartet<i>estimated</i></th><th>Linie<i>line</i></th>
+    <th>Nach<i>to</i></th><th class="r">Steig<i>platform</i></th>
+  </tr></thead>
+  <tbody id="liste"></tbody>
+</table>
+<div id="fehler" class="fehler" hidden></div>
+<div class="stand"><a href="./">‹ VVT</a><button type="button" id="aendern">Haltestelle ändern</button><span id="stand"></span></div>
+
+<div id="wahl" hidden>
+  <div class="ko"><h1>Haltestelle<i>stop</i></h1><button class="zu" type="button" id="wahlZu">Schließen</button></div>
+  <input id="such" type="search" placeholder="Haltestelle, z. B. Imst Postamt …" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+  <div class="status2" id="sStatus"></div>
+  <div class="liste2" id="treffer"></div>
+  <h2>Favoriten &amp; zuletzt</h2>
+  <div class="liste2" id="favs"></div>
+</div>
+
+<script>
+// Daten: ÖBB-Fahrplanauskunft (enthält alle VVT-Busse) über den Cloudflare-Worker der Rundreise
+const API = (() => {
+  try { const r = JSON.parse(localStorage.getItem("rundreise.v1") || "null"); if (r && r.apibase) return r.apibase.replace(/\/+$/, ""); } catch (e) {}
+  return "https://kochstrasse.ma-eberharter-94.workers.dev/api";
+})();
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const hhmm = d => new Date(d).toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit"});
+const p = new URLSearchParams(location.search);
+const n = parseInt(p.get("n") || "14", 10);
+
+// Favoriten: werden beim ersten Antippen über die Suche aufgelöst und dann mit ID gemerkt
+const FAVORITEN = ["Trankhütte", "Schönwies Kirche", "Ötztal Bahnhof"];
+const lade = k => { try { return JSON.parse(localStorage.getItem(k)) || null; } catch (e) { return null; } };
+const speichere = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+let halt = p.get("id") ? {id:p.get("id"), name:p.get("name") || ""} : lade("vvt-halt");
+
+setInterval(uhr, 1000); uhr();
+function uhr() { $("uhr").textContent = new Date().toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit", second:"2-digit"}); }
+
+const linie = d => (d.line?.name || "").replace(/^(Bus|Tram|Zug)\s+/i, "").replace(/\s*\(Zug-Nr\.[^)]*\)/, "");
+const ohneZusatz = n => String(n || "").replace(/\s+(Bahnhof|Bahnhst\.?)$/, "");
+
+async function laden() {
+  if (!halt) { wahlOeffnen(); return; }
+  $("station").textContent = halt.name || "Haltestelle";
+  document.title = "Abfahrt " + (halt.name || "");
+  try {
+    const r = await fetch(`${API}/stops/${encodeURIComponent(halt.id)}/departures?duration=120`);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
+    const deps = (j.departures || []).slice(0, n);
+    const html = deps.map(d => {
+      const plan = d.plannedWhen || d.when, ist = d.when;
+      const spaet = plan && ist && Math.abs(new Date(ist) - new Date(plan)) >= 60000;
+      const erw = d.cancelled ? "entfällt" : spaet ? hhmm(ist) : "";
+      const gl = d.platform || d.plannedPlatform || "";
+      const glNeu = d.platform && d.plannedPlatform && d.platform !== d.plannedPlatform;
+      return `<tr>
+        <td class="zeit">${plan ? hhmm(plan) : ""}</td>
+        <td class="erw">${erw}</td>
+        <td class="zug"><span class="badge">${esc(linie(d))}</span></td>
+        <td class="nach"><span class="lz"><span class="t"${d.cancelled ? ' style="text-decoration:line-through"' : ""}>${esc(ohneZusatz(d.direction))}</span></span></td>
+        <td class="steig"${glNeu ? ' style="color:var(--gelb)"' : ""}>${esc(gl)}</td></tr>`;
+    }).join("") || `<tr class="leer"><td colspan="5">Keine Abfahrten in den nächsten 2 Stunden</td></tr>`;
+    const liste = $("liste");
+    if (liste.dataset.html !== html) { liste.innerHTML = html; liste.dataset.html = html; lauftext(); }
+    $("fehler").hidden = true;
+    $("stand").textContent = "Stand " + new Date().toLocaleTimeString("de-AT", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+  } catch (e) {
+    $("fehler").textContent = "Daten konnten nicht geladen werden (" + e.message + "). Neuer Versuch in 30 s.";
+    $("fehler").hidden = false;
+  }
+}
+
+function lauftext() {
+  document.querySelectorAll(".lz").forEach(box => {
+    const t = box.firstElementChild;
+    box.classList.remove("lauf");
+    const w = box.clientWidth, tw = t.scrollWidth;
+    if (tw > w + 1) {
+      box.style.setProperty("--w", w + "px");
+      box.style.setProperty("--d", ((w + tw) / 45).toFixed(1) + "s");
+      box.classList.add("lauf");
+    }
+  });
+}
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(lauftext, 200); });
+
+// ---------- Haltestellen-Auswahl ----------
+function waehle(h) {
+  halt = h; speichere("vvt-halt", h);
+  speichere("vvt-zuletzt", [h, ...(lade("vvt-zuletzt") || []).filter(x => x.id !== h.id)].slice(0, 6));
+  history.replaceState(null, "", "?id=" + encodeURIComponent(h.id) + "&name=" + encodeURIComponent(h.name));
+  $("wahl").hidden = true; $("liste").dataset.html = ""; $("liste").innerHTML = "";
+  laden();
+}
+async function suchen(q, anz) {
+  const r = await fetch(`${API}/locations?query=${encodeURIComponent(q)}&results=${anz || 8}`);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
+  return (Array.isArray(j) ? j : []).filter(s => s.type === "stop" || s.type === "station").map(s => ({id:String(s.id), name:s.name}));
+}
+function knopf(h, ziel, beiKlick) {
+  const b = document.createElement("button"); b.type = "button"; b.textContent = h.name;
+  if (halt && h.id && halt.id === h.id) b.className = "on";
+  b.onclick = beiKlick || (() => waehle(h));
+  ziel.appendChild(b);
+}
+function wahlOeffnen() {
+  $("wahl").hidden = false; $("such").value = ""; $("treffer").innerHTML = ""; $("sStatus").textContent = "";
+  const favs = $("favs"); favs.innerHTML = "";
+  const aufgeloest = lade("vvt-favs") || {};
+  FAVORITEN.forEach(name => knopf(aufgeloest[name] || {name}, favs, async () => {
+    if (aufgeloest[name]) return waehle(aufgeloest[name]);
+    $("sStatus").textContent = "Suche " + name + " …";
+    try {
+      const t = (await suchen(name, 1))[0];
+      if (!t) throw new Error("nicht gefunden");
+      aufgeloest[name] = t; speichere("vvt-favs", aufgeloest); waehle(t);
+    } catch (e) { $("sStatus").textContent = name + ": " + e.message; }
+  }));
+  (lade("vvt-zuletzt") || []).filter(h => !Object.values(aufgeloest).some(a => a.id === h.id)).forEach(h => knopf(h, favs));
+  setTimeout(() => $("such").focus(), 50);
+}
+$("station").onclick = wahlOeffnen; $("aendern").onclick = wahlOeffnen;
+$("wahlZu").onclick = () => { if (halt) $("wahl").hidden = true; };
+let sNr = 0, sTimer;
+$("such").addEventListener("input", () => {
+  clearTimeout(sTimer);
+  sTimer = setTimeout(async () => {
+    const q = $("such").value.trim(), nr = ++sNr;
+    $("treffer").innerHTML = "";
+    if (q.length < 2) { $("sStatus").textContent = ""; return; }
+    $("sStatus").textContent = "Suche …";
+    try {
+      const t = await suchen(q);
+      if (nr !== sNr) return;
+      $("sStatus").textContent = t.length ? "" : "Keine Haltestelle gefunden.";
+      t.forEach(h => knopf(h, $("treffer")));
+    } catch (e) { if (nr === sNr) $("sStatus").textContent = "Suche fehlgeschlagen: " + e.message; }
+  }, 300);
+});
+
+laden(); setInterval(() => { if ($("wahl").hidden) laden(); }, 30000);
+</script>
+</body></html>

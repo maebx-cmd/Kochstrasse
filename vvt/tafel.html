@@ -126,8 +126,8 @@
 
 <script>
 // Verspätete Züge, deren Planzeit schon vorbei ist, fehlen sonst: HAFAS sucht nach Planzeit.
-// Darum 90 min früher anfragen und dann nach der tatsächlichen (erwarteten) Zeit filtern.
-const VORLAUF = 90;
+// Darum 6 Stunden früher anfragen und dann nach der tatsächlichen (erwarteten) Zeit filtern.
+const VORLAUF = 360;   // 6 Stunden
 function abfrageZeit() { const d = new Date(Date.now() - VORLAUF * 60000); d.setSeconds(0, 0); return d.toISOString(); }
 const nochNichtWeg = d => { const t = new Date(d.when || d.plannedWhen).getTime(); return !isNaN(t) && t >= Date.now() - 60000; };
 // Daten: ÖBB-Fahrplanauskunft (enthält alle VVT-Busse) über den Cloudflare-Worker der Rundreise

@@ -169,8 +169,8 @@
 
 <script>
 // Verspätete Züge, deren Planzeit schon vorbei ist, fehlen sonst: HAFAS sucht nach Planzeit.
-// Darum 90 min früher anfragen und dann nach der tatsächlichen (erwarteten) Zeit filtern.
-const VORLAUF = 90;
+// Darum 6 Stunden früher anfragen und dann nach der tatsächlichen (erwarteten) Zeit filtern.
+const VORLAUF = 360;   // 6 Stunden
 function abfrageZeit() { const d = new Date(Date.now() - VORLAUF * 60000); d.setSeconds(0, 0); return d.toISOString(); }
 const nochNichtWeg = d => { const t = new Date(d.when || d.plannedWhen).getTime(); return !isNaN(t) && t >= Date.now() - 60000; };
 // ---------- Grundlagen ----------
@@ -258,7 +258,7 @@ function kopf() {
 
 async function laden() {
   try {
-    const r = await fetch(`${API}/stops/${encodeURIComponent(eva)}/${art === "an" ? "arrivals" : "departures"}?when=${encodeURIComponent(abfrageZeit())}&duration=${120 + VORLAUF}`);
+    const r = await fetch(`${API}/stops/${encodeURIComponent(eva)}/${art === "an" ? "arrivals" : "departures"}?when=${encodeURIComponent(abfrageZeit())}&duration=${120 + VORLAUF}${filter === "bus" ? "" : "&bus=false&tram=false&subway=false&ferry=false&onCall=false"}`);
     const j = await r.json();
     if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
     liste = ((art === "an" ? j.arrivals : j.departures) || []).filter(nochNichtWeg);
@@ -298,9 +298,11 @@ $("liste").addEventListener("click", e => {
 });
 $("filter").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
+  const vorher = filter;
   filter = b.dataset.f;
   $("filter").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
-  zeichnen();
+  // Busse werden nur bei Bedarf mitgeladen (sonst wird die 6-Stunden-Abfrage am Hbf sehr lang)
+  if ((vorher === "bus") !== (filter === "bus")) { $("liste").innerHTML = '<div class="lade">Lade …</div>'; laden(); } else zeichnen();
 });
 $("wechsel").onclick = () => { art = art === "an" ? "ab" : "an"; urlSetzen(); kopf(); $("liste").innerHTML = '<div class="lade">Lade …</div>'; laden(); };
 

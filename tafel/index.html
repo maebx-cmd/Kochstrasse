@@ -169,10 +169,28 @@
 
 <script>
 // Verspätete Züge, deren Planzeit schon vorbei ist, fehlen sonst: HAFAS sucht nach Planzeit.
-// Darum 6 Stunden früher anfragen und dann nach der tatsächlichen (erwarteten) Zeit filtern.
+// Die Auskunft liefert pro Abfrage aber nur eine begrenzte Anzahl Fahrten – darum mehrere 2-Stunden-Fenster:
+// eines ab jetzt und drei für die letzten 6 Stunden, aus denen nur übernommen wird, was laut Echtzeit noch nicht weg ist.
 const VORLAUF = 360;   // 6 Stunden
-function abfrageZeit() { const d = new Date(Date.now() - VORLAUF * 60000); d.setSeconds(0, 0); return d.toISOString(); }
+const FENSTER = 120;
+function fensterZeit(minuten) { const d = new Date(Date.now() + minuten * 60000); d.setSeconds(0, 0); return d.toISOString(); }
 const nochNichtWeg = d => { const t = new Date(d.when || d.plannedWhen).getTime(); return !isNaN(t) && t >= Date.now() - 60000; };
+async function holeFahrten(basis, feld, extra) {
+  const starts = [0]; for (let m = -FENSTER; m >= -VORLAUF; m -= FENSTER) starts.push(m);
+  const abfragen = starts.map(async (start, i) => {
+    const url = `${basis}?${start === 0 ? "" : "when=" + encodeURIComponent(fensterZeit(start)) + "&"}duration=${FENSTER}${extra || ""}`;
+    try {
+      const r = await fetch(url); const j = await r.json();
+      if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
+      return j[feld] || [];
+    } catch (e) { if (i === 0) throw e; return []; }   // Vergangenheits-Fenster dürfen ausfallen
+  });
+  const alle = (await Promise.all(abfragen)).flat();
+  const gesehen = new Set();
+  return alle.filter(d => { const k = (d.tripId || "") + "|" + (d.plannedWhen || ""); if (gesehen.has(k)) return false; gesehen.add(k); return true; })
+    .filter(nochNichtWeg)
+    .sort((a, b) => new Date(a.plannedWhen || a.when) - new Date(b.plannedWhen || b.when));
+}
 // ---------- Grundlagen ----------
 const API = (() => {
   try { const r = JSON.parse(localStorage.getItem("rundreise.v1") || "null"); if (r && r.apibase) return r.apibase.replace(/\/+$/, ""); } catch (e) {}
@@ -258,10 +276,9 @@ function kopf() {
 
 async function laden() {
   try {
-    const r = await fetch(`${API}/stops/${encodeURIComponent(eva)}/${art === "an" ? "arrivals" : "departures"}?when=${encodeURIComponent(abfrageZeit())}&duration=${120 + VORLAUF}${filter === "bus" ? "" : "&bus=false&tram=false&subway=false&ferry=false&onCall=false"}`);
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
-    liste = ((art === "an" ? j.arrivals : j.departures) || []).filter(nochNichtWeg);
+    liste = await holeFahrten(`${API}/stops/${encodeURIComponent(eva)}/${art === "an" ? "arrivals" : "departures"}`,
+      art === "an" ? "arrivals" : "departures",
+      filter === "bus" ? "" : "&bus=false&tram=false&subway=false&ferry=false&onCall=false");
     if (!stationName) {
       const eig = liste.find(d => d.stop && d.stop.id === String(eva)) || liste.find(d => d.line && d.line.mode === "train");
       if (eig) { stationName = eig.stop.name.replace(/\s*\(.*\)$/, ""); urlSetzen(); }

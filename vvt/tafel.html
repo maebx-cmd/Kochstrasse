@@ -125,6 +125,11 @@
 </div>
 
 <script>
+// Verspätete Züge, deren Planzeit schon vorbei ist, fehlen sonst: HAFAS sucht nach Planzeit.
+// Darum 90 min früher anfragen und dann nach der tatsächlichen (erwarteten) Zeit filtern.
+const VORLAUF = 90;
+function abfrageZeit() { const d = new Date(Date.now() - VORLAUF * 60000); d.setSeconds(0, 0); return d.toISOString(); }
+const nochNichtWeg = d => { const t = new Date(d.when || d.plannedWhen).getTime(); return !isNaN(t) && t >= Date.now() - 60000; };
 // Daten: ÖBB-Fahrplanauskunft (enthält alle VVT-Busse) über den Cloudflare-Worker der Rundreise
 const API = (() => {
   try { const r = JSON.parse(localStorage.getItem("rundreise.v1") || "null"); if (r && r.apibase) return r.apibase.replace(/\/+$/, ""); } catch (e) {}
@@ -153,10 +158,10 @@ async function laden() {
   $("station").textContent = halt.name || "Haltestelle";
   document.title = "Abfahrt " + (halt.name || "");
   try {
-    const r = await fetch(`${API}/stops/${encodeURIComponent(halt.id)}/departures?duration=120`);
+    const r = await fetch(`${API}/stops/${encodeURIComponent(halt.id)}/departures?when=${encodeURIComponent(abfrageZeit())}&duration=${120 + VORLAUF}`);
     const j = await r.json();
     if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
-    const deps = (j.departures || []).slice(0, n);
+    const deps = (j.departures || []).filter(nochNichtWeg).slice(0, n);
     const html = deps.map(d => {
       const plan = d.plannedWhen || d.when, ist = d.when;
       const spaet = plan && ist && Math.abs(new Date(ist) - new Date(plan)) >= 60000;

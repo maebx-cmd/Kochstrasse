@@ -168,6 +168,11 @@
 </div>
 
 <script>
+// Verspätete Züge, deren Planzeit schon vorbei ist, fehlen sonst: HAFAS sucht nach Planzeit.
+// Darum 90 min früher anfragen und dann nach der tatsächlichen (erwarteten) Zeit filtern.
+const VORLAUF = 90;
+function abfrageZeit() { const d = new Date(Date.now() - VORLAUF * 60000); d.setSeconds(0, 0); return d.toISOString(); }
+const nochNichtWeg = d => { const t = new Date(d.when || d.plannedWhen).getTime(); return !isNaN(t) && t >= Date.now() - 60000; };
 // ---------- Grundlagen ----------
 const API = (() => {
   try { const r = JSON.parse(localStorage.getItem("rundreise.v1") || "null"); if (r && r.apibase) return r.apibase.replace(/\/+$/, ""); } catch (e) {}
@@ -253,10 +258,10 @@ function kopf() {
 
 async function laden() {
   try {
-    const r = await fetch(`${API}/stops/${encodeURIComponent(eva)}/${art === "an" ? "arrivals" : "departures"}?duration=120`);
+    const r = await fetch(`${API}/stops/${encodeURIComponent(eva)}/${art === "an" ? "arrivals" : "departures"}?when=${encodeURIComponent(abfrageZeit())}&duration=${120 + VORLAUF}`);
     const j = await r.json();
     if (!r.ok) throw new Error(j.msg || "HTTP " + r.status);
-    liste = (art === "an" ? j.arrivals : j.departures) || [];
+    liste = ((art === "an" ? j.arrivals : j.departures) || []).filter(nochNichtWeg);
     if (!stationName) {
       const eig = liste.find(d => d.stop && d.stop.id === String(eva)) || liste.find(d => d.line && d.line.mode === "train");
       if (eig) { stationName = eig.stop.name.replace(/\s*\(.*\)$/, ""); urlSetzen(); }
